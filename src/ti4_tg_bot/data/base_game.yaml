@@ -33,3 +33,553 @@ factions:
     wiki: "https://twilight-imperium.fandom.com/wiki/The_Yin_Brotherhood"
   - name: "The Yssaril Tribes"
     wiki: "https://twilight-imperium.fandom.com/wiki/The_Yssaril_Tribes"
+tiles:
+  mecatol:
+    number: 18
+    race:
+    wormhole: NO_WORMHOLE
+    anomaly: NO_ANOMALY
+    planets:
+      - name: Mecatol Rex
+        resources: 1
+        influence: 6
+        trait: NO_TRAIT
+        tech: NO_TECH
+  blue_tiles:
+    - number: 38
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Abyz
+          resources: 3
+          influence: 0
+          trait: HAZARDOUS
+          tech: NO_TECH
+        - name: Fria
+          resources: 2
+          influence: 0
+          trait: HAZARDOUS
+          tech: NO_TECH
+    - number: 19
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Wellon
+          resources: 1
+          influence: 2
+          trait: INDUSTRIAL
+          tech: YELLOW
+    - number: 34
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Centauri
+          resources: 1
+          influence: 3
+          trait: CULTURAL
+          tech: NO_TECH
+        - name: Gral
+          resources: 1
+          influence: 1
+          trait: INDUSTRIAL
+          tech: BLUE
+    - number: 33
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Corneeq
+          resources: 1
+          influence: 2
+          trait: CULTURAL
+          tech: NO_TECH
+        - name: Resculon
+          resources: 2
+          influence: 0
+          trait: CULTURAL
+          tech: NO_TECH
+    - number: 25
+      race:
+      wormhole: BETA
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Quann
+          resources: 2
+          influence: 1
+          trait: CULTURAL
+          tech: NO_TECH
+    - number: 29
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Qucen'n
+          resources: 1
+          influence: 2
+          trait: INDUSTRIAL
+          tech: NO_TECH
+        - name: Rarron
+          resources: 0
+          influence: 3
+          trait: CULTURAL
+          tech: NO_TECH
+    - number: 37
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: ARINAM
+          resources: 1
+          influence: 2
+          trait: INDUSTRIAL
+          tech: NO_TECH
+        - name: Meer
+          resources: 0
+          influence: 4
+          trait: HAZARDOUS
+          tech: RED
+    - number: 36
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Arnor
+          resources: 2
+          influence: 1
+          trait: INDUSTRIAL
+          tech: NO_TECH
+        - name: Lor
+          resources: 1
+          influence: 2
+          trait: INDUSTRIAL
+          tech: NO_TECH
+    - number: 32
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Dal Bootha
+          resources: 0
+          influence: 2
+          trait: CULTURAL
+          tech: NO_TECH
+        - name: Xxehan
+          resources: 1
+          influence: 1
+          trait: CULTURAL
+          tech: NO_TECH
+    - number: 22
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Tar'Mann
+          resources: 1
+          influence: 1
+          trait: INDUSTRIAL
+          tech: GREEN
+    - number: 23
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Saudor
+          resources: 2
+          influence: 2
+          trait: INDUSTRIAL
+          tech: NO_TECH
+    - number: 35
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Bereg
+          resources: 3
+          influence: 1
+          trait: HAZARDOUS
+          tech: NO_TECH
+        - name: Lirta IV
+          resources: 2
+          influence: 3
+          trait: HAZARDOUS
+          tech: NO_TECH
+    - number: 21
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Thibah
+          resources: 1
+          influence: 1
+          trait: INDUSTRIAL
+          tech: BLUE
+    - number: 20
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Vefut II
+          resources: 2
+          influence: 2
+          trait: HAZARDOUS
+          tech: NO_TECH
+    - number: 24
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Mehar Xull
+          resources: 1
+          influence: 3
+          trait: HAZARDOUS
+          tech: RED
+    - number: 27
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: New Albion
+          resources: 1
+          influence: 1
+          trait: INDUSTRIAL
+          tech: GREEN
+        - name: Starpoint
+          resources: 3
+          influence: 1
+          trait: HAZARDOUS
+          tech: NO_TECH
+    - number: 26
+      race:
+      wormhole: ALPHA
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Lodor
+          resources: 3
+          influence: 1
+          trait: CULTURAL
+          tech: NO_TECH
+    - number: 28
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Tequ'Ran
+          resources: 2
+          influence: 0
+          trait: HAZARDOUS
+          tech: NO_TECH
+        - name: Torkan
+          resources: 0
+          influence: 3
+          trait: CULTURAL
+          tech: NO_TECH
+    - number: 31
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Lazar
+          resources: 1
+          influence: 0
+          trait: INDUSTRIAL
+          tech: YELLOW
+        - name: Sakulag
+          resources: 2
+          influence: 1
+          trait: HAZARDOUS
+          tech: NO_TECH
+    - number: 30
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Mellon
+          resources: 0
+          influence: 2
+          trait: CULTURAL
+          tech: NO_TECH
+        - name: Zohbat
+          resources: 3
+          influence: 1
+          trait: HAZARDOUS
+          tech: NO_TECH
+  red_tiles:
+    - number: 45
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: ASTEROID_FIELD
+      planets: []
+    - number: 49
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: EMPTY
+      planets: []
+    - number: 43
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: SUPERNOVA
+      planets: []
+    - number: 40
+      race:
+      wormhole: BETA
+      anomaly: EMPTY
+      planets: []
+    - number: 46
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: EMPTY
+      planets: []
+    - number: 50
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: EMPTY
+      planets: []
+    - number: 44
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: ASTEROID_FIELD
+      planets: []
+    - number: 47
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: EMPTY
+      planets: []
+    - number: 48
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: EMPTY
+      planets: []
+    - number: 41
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: GRAVITY_RIFT
+      planets: []
+    - number: 42
+      race:
+      wormhole: NO_WORMHOLE
+      anomaly: NEBULA
+      planets: []
+    - number: 39
+      race:
+      wormhole: ALPHA
+      anomaly: EMPTY
+      planets: []
+  home_tiles:
+    - number: 1
+      race: The Federation of Sol
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Jord
+          resources: 4
+          influence: 2
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 2
+      race: The Mentak Coalition
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Moll Primus
+          resources: 4
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 3
+      race: The Brotherhood of Yin
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Darien
+          resources: 4
+          influence: 4
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 4
+      race: The Embers of Muaat
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Muaat
+          resources: 4
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 5
+      race: The Arborec
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Nestphar
+          resources: 3
+          influence: 2
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 6
+      race: The L1Z1X Mindnet
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: 0.0.0
+          resources: 5
+          influence: 0
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 7
+      race: The Winnu
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Winnu
+          resources: 3
+          influence: 4
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 8
+      race: The Nekro Virus
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Mordai II
+          resources: 4
+          influence: 0
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 9
+      race: The Naalu Collective
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Maaluuk
+          resources: 0
+          influence: 2
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Druaa
+          resources: 3
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 10
+      race: The Barony of Letnev
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Arc Prime
+          resources: 4
+          influence: 0
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Wren Terra
+          resources: 2
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 11
+      race: The Clan of Saar
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Lisis II
+          resources: 1
+          influence: 0
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Ragh
+          resources: 2
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 12
+      race: The Universities of Jol-Nar
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Nar
+          resources: 2
+          influence: 3
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Jol
+          resources: 1
+          influence: 2
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 13
+      race: Sardakk N'orr
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Tren'Lak
+          resources: 1
+          influence: 0
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Quinarra
+          resources: 3
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 14
+      race: The Xxcha Kingdom
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Archon Ren
+          resources: 2
+          influence: 3
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Archon Tau
+          resources: 1
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 15
+      race: The Yssaril Tribes
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Retillion
+          resources: 2
+          influence: 3
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Shalloq
+          resources: 1
+          influence: 2
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 16
+      race: The Emirates of Hacan
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Hercant
+          resources: 1
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Kamdorn
+          resources: 0
+          influence: 1
+          trait: NO_TRAIT
+          tech: NO_TECH
+        - name: Arretze
+          resources: 2
+          influence: 0
+          trait: NO_TRAIT
+          tech: NO_TECH
+    - number: 17
+      race: The Ghosts of Creuss
+      wormhole: NO_WORMHOLE
+      anomaly: NO_ANOMALY
+      planets:
+        - name: Creuss
+          resources: 4
+          influence: 2
+          trait: NO_TRAIT
+          tech: NO_TECH
