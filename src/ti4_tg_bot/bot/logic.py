@@ -1,5 +1,9 @@
-from typing import Any
-from aiogram import F, Router
+"""Main logic."""
+
+from datetime import datetime
+from random import Random
+
+from aiogram import Router
 from aiogram.enums import ChatType
 from aiogram.filters import Command, Filter
 from aiogram.types import Message
@@ -9,6 +13,10 @@ from ti4_tg_bot.state.room import GlobalState, Room
 
 state = GlobalState()
 router = Router()
+
+
+MIN_PLAYERS = 1
+MAX_PLAYERS = 6
 
 
 class GroupOnly(Filter):
@@ -71,8 +79,10 @@ async def cmd_start(message: Message) -> None:
         f"<b>{message.from_user.full_name}</b> is starting a new game!"
         + "\nYou can /join or /leave the lobby."
         + "\nYou can also /cancel the game."
+        + "\nOnce everyone has joined, /create the game."
     )
     await message.answer(reply)
+    await show_status(message)
 
 
 @router.message
@@ -110,7 +120,7 @@ async def cmd_join(message: Message) -> None:
 
 @router.message(Command("leave"), GroupOnly(), InLobby(state))
 async def cmd_leave(message: Message) -> None:
-    """Join the current game."""
+    """Leave the current game."""
     chat_id = message.chat.id
     uid = message.from_user.id
 
@@ -119,3 +129,39 @@ async def cmd_leave(message: Message) -> None:
         room.users.remove(uid)
 
     await show_status(message)
+
+
+@router.message(Command("create"), GroupOnly(), InLobby(state))
+async def cmd_create(message: Message) -> None:
+    """Create a game setup."""
+    chat_id = message.chat.id
+    uid = message.from_user.id  # noqa
+    room = state.rooms[chat_id]
+    if len(room.users) < MIN_PLAYERS:
+        await message.answer(f"Need at least {MIN_PLAYERS} players; some should /join")
+        return
+    elif len(room.users) > MAX_PLAYERS:
+        await message.answer(f"Need at most {MAX_PLAYERS} players; some should /leave")
+        return
+
+    # Set seed and RNG
+    seed = int(datetime.utcnow().timestamp() * 1000)
+    rng = Random(seed)
+    await message.answer(f"Using seed: {seed}")
+    await message.answer_dice()
+
+    # Create order
+    order = rng.sample(room.users, k=len(room.users))
+    order_mems = [await message.chat.get_member(x) for x in order]
+    order_names = [f"@{x.user.username}" for x in order_mems]
+    await message.answer(
+        "Choosing Order:\n"
+        + "\n".join([f"{i+1}. {nm}" for i, nm in enumerate(order_names)])
+    )
+
+    # Select races
+    # TODO
+
+    # Close game game
+    del state.rooms[chat_id]
+    await message.answer("Finished game setup. Have fun!\n/start to create a new one.")
