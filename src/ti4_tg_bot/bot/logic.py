@@ -17,8 +17,8 @@ state = GlobalState()
 router = Router()
 
 
-MIN_PLAYERS = 1
-MAX_PLAYERS = 6
+MIN_PLAYERS = base_game.min_players
+MAX_PLAYERS = base_game.max_players
 
 
 class PrivateOnly(Filter):
@@ -73,7 +73,7 @@ async def show_status(message: Message) -> None:
 
     room = state.rooms[chat_id]
     members = [await message.chat.get_member(x) for x in room.users]
-    member_names = [f"@{get_at(x.user)}" for x in members]
+    member_names = [f"{get_at(x.user)}" for x in members]
     await message.answer("Current players: " + ", ".join(member_names))
 
 
@@ -211,7 +211,7 @@ async def cmd_create(message: Message, bot: Bot) -> None:
     # Create order
     user_order = rng.sample(room.users, k=len(room.users))
     order_mems = [await message.chat.get_member(x) for x in user_order]
-    order_names = [f"@{get_at(x.user)}" for x in order_mems]
+    order_names = [f"{get_at(x.user)}" for x in order_mems]
     await message.answer(
         "Choosing Order:\n"
         + "\n".join([f"{i+1}. {nm}" for i, nm in enumerate(order_names)])
@@ -227,7 +227,7 @@ async def cmd_create(message: Message, bot: Bot) -> None:
 
     # Ask users to select stuff
     selected: dict[int, str] = {}
-    for i, uid in reversed(list(enumerate(user_order))):
+    for i, uid in list(enumerate(user_order)):  # reversed?
         opts_i = faction_order[i * n_per : (i + 1) * n_per]
         selected[uid] = await ask_selection(
             bot=bot, state=state, prompt="Choose faction.", options=opts_i, user_id=uid

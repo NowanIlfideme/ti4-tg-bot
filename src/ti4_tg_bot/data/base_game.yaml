@@ -1,3 +1,6 @@
+name: "Base Game"
+min_players: 2
+max_players: 6
 factions:
   - name: "The Arborec"
     wiki: "https://twilight-imperium.fandom.com/wiki/The_Arborec"

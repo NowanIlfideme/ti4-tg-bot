@@ -84,6 +84,8 @@ class Faction(BaseModel):
 class GameInfo(BaseModel):
     """Game setup info."""
 
+    min_players: int
+    max_players: int
     factions: list[Faction]
     tiles: TileSet
 
