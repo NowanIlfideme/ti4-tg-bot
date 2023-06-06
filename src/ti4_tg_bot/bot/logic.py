@@ -7,7 +7,7 @@ from asyncio import Queue
 from aiogram import Bot, Router
 from aiogram.enums import ChatType
 from aiogram.filters import Command, Filter
-from aiogram.types import Message
+from aiogram.types import Message, User
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from ti4_tg_bot.data import base_game
@@ -57,6 +57,12 @@ class InLobby(Filter):
         return res
 
 
+def get_at(user: User) -> str:
+    if user.username:
+        return f"@{user.username}"
+    return user.full_name
+
+
 async def show_status(message: Message) -> None:
     """Show current status of the lobby."""
     chat_id = message.chat.id
@@ -67,7 +73,7 @@ async def show_status(message: Message) -> None:
 
     room = state.rooms[chat_id]
     members = [await message.chat.get_member(x) for x in room.users]
-    member_names = [f"@{x.user.username}" for x in members]
+    member_names = [f"@{get_at(x.user)}" for x in members]
     await message.answer("Current players: " + ", ".join(member_names))
 
 
@@ -205,7 +211,7 @@ async def cmd_create(message: Message, bot: Bot) -> None:
     # Create order
     user_order = rng.sample(room.users, k=len(room.users))
     order_mems = [await message.chat.get_member(x) for x in user_order]
-    order_names = [f"@{x.user.username}" for x in order_mems]
+    order_names = [f"@{get_at(x.user)}" for x in order_mems]
     await message.answer(
         "Choosing Order:\n"
         + "\n".join([f"{i+1}. {nm}" for i, nm in enumerate(order_names)])
