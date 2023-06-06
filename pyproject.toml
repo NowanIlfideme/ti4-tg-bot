@@ -17,7 +17,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "NowanIlfideme", email = "git@nowan.dev" }]
 
 dependencies = [
-    "aiogram",
+    "aiogram~=3.0.0b7",
     "pydantic<2",
     "pydantic-yaml~=1.0.0a1",
     "importlib_metadata",
