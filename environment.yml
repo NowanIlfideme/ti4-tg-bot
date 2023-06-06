@@ -5,8 +5,8 @@ dependencies:
   - python=3.10
   - pip
   - pip:
-      - python-telegram-bot[all]
-      - pydantic<2
-      - pydantic-yaml~=1.0.0a1
-      # for my sanity
-      - black
+      - -e .[dev]
+      - aiohttp[speedups]
+      - uvloop
+      - cchardet
+      - aiodns
