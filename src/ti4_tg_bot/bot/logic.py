@@ -8,7 +8,7 @@ from aiogram.enums import ChatType
 from aiogram.filters import Command, Filter
 from aiogram.types import Message
 
-
+from ti4_tg_bot.data import base_game
 from ti4_tg_bot.state.room import GlobalState, Room
 
 state = GlobalState()
@@ -131,6 +131,12 @@ async def cmd_leave(message: Message) -> None:
     await show_status(message)
 
 
+async def ask_selection(options: list[str], user_id: int) -> str:
+    """Ask user for faction selection."""
+    # FIXME: Proper ask!
+    return options[0]
+
+
 @router.message(Command("create"), GroupOnly(), InLobby(state))
 async def cmd_create(message: Message) -> None:
     """Create a game setup."""
@@ -151,17 +157,40 @@ async def cmd_create(message: Message) -> None:
     await message.answer_dice()
 
     # Create order
-    order = rng.sample(room.users, k=len(room.users))
-    order_mems = [await message.chat.get_member(x) for x in order]
+    user_order = rng.sample(room.users, k=len(room.users))
+    order_mems = [await message.chat.get_member(x) for x in user_order]
     order_names = [f"@{x.user.username}" for x in order_mems]
     await message.answer(
         "Choosing Order:\n"
         + "\n".join([f"{i+1}. {nm}" for i, nm in enumerate(order_names)])
     )
 
-    # Select races
-    # TODO
+    # Select game mode
+    game = base_game
 
-    # Close game game
+    n_per = 3
+
+    # Select race order (basically mapping to user)
+    faction_order = rng.sample(game.faction_names, k=len(game.faction_names))
+
+    # Ask users to select stuff
+    selected: dict[int, str] = {}
+    for i, uid in reversed(list(enumerate(user_order))):
+        opts_i = faction_order[i * n_per : (i + 1) * n_per]
+        selected[uid] = await ask_selection(options=opts_i, user_id=uid)
+        # TODO: Selection of location too?...
+
+    # Return results
+    msg = ["Finished game setup."]
+    for i, uid in enumerate(user_order):
+        uname = order_names[i]
+        fac = selected[uid]
+        fac_link = [x for x in game.factions if x.name == fac][0].wiki
+        fac_o = f'<a href="{fac_link}">{fac}</a>'
+        loc = "(no location)"
+        msg.append(f"{i+1}. {uname} as <b>{fac_o}</b> at <b>{loc}</b>")
+
+    # Close game state
+    msg.append("Have fun! Use /start to create a new one.")
+    await message.answer("\n".join(msg), disable_web_page_preview=True)
     del state.rooms[chat_id]
-    await message.answer("Finished game setup. Have fun!\n/start to create a new one.")
