@@ -38,6 +38,20 @@ class InLobby(Filter):
         return res
 
 
+async def show_status(message: Message) -> None:
+    """Show current status of the lobby."""
+    chat_id = message.chat.id
+
+    if chat_id not in state.rooms:
+        await message.answer("There is no active game. /start to create a new one.")
+        return
+
+    room = state.rooms[chat_id]
+    members = [await message.chat.get_member(x) for x in room.users]
+    member_names = [f"@{x.user.username}" for x in members]
+    await message.answer("Current players: " + ", ".join(member_names))
+
+
 @router.message(Command("start"), GroupOnly())
 async def cmd_start(message: Message) -> None:
     """Start a new game."""
@@ -56,6 +70,7 @@ async def cmd_start(message: Message) -> None:
     reply = (
         f"<b>{message.from_user.full_name}</b> is starting a new game!"
         + "\nYou can /join or /leave the lobby."
+        + "\nYou can also /cancel the game."
     )
     await message.answer(reply)
 
@@ -90,9 +105,7 @@ async def cmd_join(message: Message) -> None:
     if uid not in room.users:
         room.users.append(uid)
 
-    members = [await message.chat.get_member(x) for x in room.users]
-    member_names = [f"@{x.user.username}" for x in members]
-    await message.answer("Current players: " + ", ".join(member_names))
+    await show_status(message)
 
 
 @router.message(Command("leave"), GroupOnly(), InLobby(state))
@@ -105,6 +118,4 @@ async def cmd_leave(message: Message) -> None:
     if uid in room.users:
         room.users.remove(uid)
 
-    members = [await message.chat.get_member(x) for x in room.users]
-    member_names = [f"@{x.user.username}" for x in members]
-    await message.answer("Current players: " + ", ".join(member_names))
+    await show_status(message)
