@@ -1,5 +1,6 @@
 """Model for rooms."""
 
+from asyncio import Queue
 from pydantic import BaseModel
 
 ChatID = int
@@ -13,7 +14,13 @@ class Room(BaseModel):
     users: list[UserID] = []
 
 
-class GlobalState(BaseModel):
+class GlobalState:
     """All rooms and such."""
 
-    rooms: dict[ChatID, Room] = {}
+    def __init__(
+        self,
+        rooms: dict[ChatID, Room] = {},
+        queues: dict[UserID, Queue] = {},
+    ):
+        self.rooms = dict(rooms)
+        self.queues = dict(queues)

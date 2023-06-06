@@ -3,10 +3,12 @@
 from datetime import datetime
 from random import Random
 
-from aiogram import Router
+from asyncio import Queue
+from aiogram import Bot, Router
 from aiogram.enums import ChatType
 from aiogram.filters import Command, Filter
 from aiogram.types import Message
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from ti4_tg_bot.data import base_game
 from ti4_tg_bot.state.room import GlobalState, Room
@@ -17,6 +19,15 @@ router = Router()
 
 MIN_PLAYERS = 1
 MAX_PLAYERS = 6
+
+
+class PrivateOnly(Filter):
+    """Only allow commands in private."""
+
+    async def __call__(self, message: Message) -> bool:
+        if not isinstance(message, Message):
+            return False
+        return message.chat.type in [ChatType.PRIVATE]
 
 
 class GroupOnly(Filter):
@@ -131,14 +142,49 @@ async def cmd_leave(message: Message) -> None:
     await show_status(message)
 
 
-async def ask_selection(options: list[str], user_id: int) -> str:
+async def ask_selection(
+    bot: Bot, state: GlobalState, prompt: str, options: list[str], user_id: int
+) -> str:
     """Ask user for faction selection."""
-    # FIXME: Proper ask!
-    return options[0]
+    # Create keyboard
+    reply_kb = ReplyKeyboardBuilder()
+    for opt in options:
+        reply_kb.button(text=str(opt))
+
+    await bot.send_message(
+        user_id, prompt, reply_markup=reply_kb.as_markup(one_time_keyboard=True)
+    )
+
+    queue = Queue()
+    state.queues[user_id] = queue
+
+    value = ""
+    while True:
+        value = await queue.get()
+        if value in options:
+            break
+        await bot.send_message(
+            "\n".join(["Incorrect choice, choose one of:", *options]),
+            reply_markup=reply_kb.as_markup(),
+        )
+
+    # Cleanup
+    del state.queues[user_id]
+    return value
+
+
+@router.message(PrivateOnly())
+async def pm_get_msg(message: Message):
+    """Add stuff to message."""
+    uid = message.from_user.id  # noqa
+    queue = state.queues.get(uid)
+    if queue is None:
+        return
+    await queue.put(message.text)
 
 
 @router.message(Command("create"), GroupOnly(), InLobby(state))
-async def cmd_create(message: Message) -> None:
+async def cmd_create(message: Message, bot: Bot) -> None:
     """Create a game setup."""
     chat_id = message.chat.id
     uid = message.from_user.id  # noqa
@@ -177,7 +223,10 @@ async def cmd_create(message: Message) -> None:
     selected: dict[int, str] = {}
     for i, uid in reversed(list(enumerate(user_order))):
         opts_i = faction_order[i * n_per : (i + 1) * n_per]
-        selected[uid] = await ask_selection(options=opts_i, user_id=uid)
+        selected[uid] = await ask_selection(
+            bot=bot, state=state, prompt="Choose faction.", options=opts_i, user_id=uid
+        )
+        # TODO: Do we notify folks?
         # TODO: Selection of location too?...
 
     # Return results
