@@ -3,7 +3,7 @@
 from datetime import datetime
 from random import Random
 
-from asyncio import Queue
+import asyncio
 from aiogram import Bot, Router
 from aiogram.enums import ChatType
 from aiogram.filters import Command, Filter
@@ -27,17 +27,17 @@ cmds: dict[str, BotCommand] = {
     "cancel": BotCommand(command="cancel", description="Cancel current lobby."),
     "join": BotCommand(command="join", description="Join the current lobby."),
     "leave": BotCommand(command="leave", description="Leave the current lobby."),
-    "create_simple": BotCommand(
-        command="create_simple",
-        description="Create a game with 'simple' startup.",
+    "create_secret_only_pick": BotCommand(
+        command="create_secret_only_pick",
+        description="Players secretly pick 1 of 3 random factions (at the same time).",
     ),
-    "create_secret": BotCommand(
-        command="create_secret",
-        description="Create a game with 'secret' startup.",
+    "create_public_pick_ban": BotCommand(
+        command="create_public_pick_ban",
+        description="In order, players ban 1/3 factions and pick 1/3.",
     ),
-    "create_pick_ban": BotCommand(
-        command="create_pick_ban",
-        description="Create a game with 'pick/ban' startup.",
+    "create_public_ban_pick": BotCommand(
+        command="create_public_ban_pick",
+        description="In order, players ban 1 faction each. In reverse order, they pick",
     ),
 }
 
@@ -185,7 +185,7 @@ async def ask_selection(
         user_id, prompt, reply_markup=reply_kb.as_markup(one_time_keyboard=True)
     )
 
-    queue = Queue()
+    queue = asyncio.Queue()
     state.queues[user_id] = queue
 
     value = ""
@@ -213,9 +213,9 @@ async def pm_get_msg(message: Message):
     await queue.put(message.text)
 
 
-@router.message(Command(cmds["create_simple"]), GroupOnly(), InLobby(state))
-async def cmd_create_simple(message: Message, bot: Bot) -> None:
-    """Create a game setup."""
+@router.message(Command(cmds["create_secret_only_pick"]), GroupOnly(), InLobby(state))
+async def cmd_create_secret_only_pick(message: Message, bot: Bot) -> None:
+    """All players pick 1 of 3 factions, at the same time."""
     chat_id = message.chat.id
     uid = message.from_user.id  # noqa
     room = state.rooms[chat_id]
@@ -237,7 +237,7 @@ async def cmd_create_simple(message: Message, bot: Bot) -> None:
     order_mems = [await message.chat.get_member(x) for x in user_order]
     order_names = [f"{get_at(x.user)}" for x in order_mems]
     await message.answer(
-        "Choosing Order:\n"
+        "Play Order:\n"
         + "\n".join([f"{i+1}. {nm}" for i, nm in enumerate(order_names)])
     )
 
@@ -250,16 +250,25 @@ async def cmd_create_simple(message: Message, bot: Bot) -> None:
     faction_order = rng.sample(game.faction_names, k=len(game.faction_names))
 
     # Ask users to select stuff
-    selected: dict[int, str] = {}
-    for i, uid in list(enumerate(user_order)):  # reversed?
+    # NEW: It's now in parallel!
+    sel_futures: list[asyncio.Future] = []
+    for negative_i, uid in list(enumerate(user_order)):  # reversed order
+        i = len(user_order) - 1 - negative_i
         i_low = i * n_per
         i_hi = min((i + 1) * n_per, len(game.faction_names))
         opts_i = faction_order[i_low:i_hi]
-        selected[uid] = await ask_selection(
-            bot=bot, state=state, prompt="Choose faction .", options=opts_i, user_id=uid
+        sel_futures.append(
+            ask_selection(
+                bot=bot,
+                state=state,
+                prompt="Choose faction.",
+                options=opts_i,
+                user_id=uid,
+            )
         )
-        # TODO: Do we notify folks?
         # TODO: Selection of location too?...
+    selected_facs: list[str] = await asyncio.gather(*sel_futures)
+    selected: dict[int, str] = {uid: fac for uid, fac in zip(user_order, selected_facs)}
 
     # Return results
     msg = ["Finished game setup."]
@@ -277,8 +286,8 @@ async def cmd_create_simple(message: Message, bot: Bot) -> None:
     del state.rooms[chat_id]
 
 
-@router.message(Command(cmds["create_secret"]), GroupOnly(), InLobby(state))
-async def cmd_create_secret(message: Message, bot: Bot) -> None:
+@router.message(Command(cmds["create_public_pick_ban"]), GroupOnly(), InLobby(state))
+async def cmd_create_public_pick_ban(message: Message, bot: Bot) -> None:
     """Create a game setup."""
     chat_id = message.chat.id
     uid = message.from_user.id  # noqa
@@ -321,6 +330,17 @@ async def cmd_create_secret(message: Message, bot: Bot) -> None:
             user_chat
         except TelegramForbiddenError:
             pass
+        # Pick
+        opts_pick_i = rng.sample(remaining_factions, k=n_per)
+        picked_i = await ask_selection(
+            bot=bot,
+            state=state,
+            prompt="Choose faction to PLAY:",
+            options=opts_pick_i,
+            user_id=uid,
+        )
+        selected[uid] = picked_i
+        remaining_factions.remove(picked_i)
         # Ban
         opts_ban_i = rng.sample(remaining_factions, k=n_per)
         banned_i = await ask_selection(
@@ -332,17 +352,6 @@ async def cmd_create_secret(message: Message, bot: Bot) -> None:
         )
         banned[uid] = banned_i
         remaining_factions.remove(banned_i)
-        # Pick
-        opts_pick_i = rng.sample(remaining_factions, k=n_per)
-        picked_i = await ask_selection(
-            bot=bot,
-            state=state,
-            prompt="Choose faction PLAY:",
-            options=opts_pick_i,
-            user_id=uid,
-        )
-        selected[uid] = picked_i
-        remaining_factions.remove(picked_i)
         # TODO: Do we notify folks?
         # TODO: Selection of location too?...
 
@@ -366,8 +375,8 @@ async def cmd_create_secret(message: Message, bot: Bot) -> None:
     del state.rooms[chat_id]
 
 
-@router.message(Command(cmds["create_pick_ban"]), GroupOnly(), InLobby(state))
-async def cmd_create_pick_ban(message: Message, bot: Bot) -> None:
+@router.message(Command(cmds["create_public_ban_pick"]), GroupOnly(), InLobby(state))
+async def cmd_create_public_ban_pick(message: Message, bot: Bot) -> None:
     """Create a game setup."""
     chat_id = message.chat.id
     uid = message.from_user.id  # noqa
