@@ -1,5 +1,5 @@
 name: "Base Game"
-min_players: 2
+min_players: 1
 max_players: 6
 factions:
   - name: "The Arborec"

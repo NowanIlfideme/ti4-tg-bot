@@ -10,4 +10,4 @@ __all__ = ["data_path", "base_game"]
 
 data_path = Path(__file__).parent
 
-base_game = parse_yaml_file_as(GameInfo, data_path / "base_game.yaml")
+base_game: GameInfo = parse_yaml_file_as(GameInfo, data_path / "base_game.yaml")
