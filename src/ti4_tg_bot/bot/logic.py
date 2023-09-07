@@ -7,7 +7,7 @@ from asyncio import Queue
 from aiogram import Bot, Router
 from aiogram.enums import ChatType
 from aiogram.filters import Command, Filter
-from aiogram.types import Message, User
+from aiogram.types import Message, User, BotCommand
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.exceptions import TelegramForbiddenError
 
@@ -20,6 +20,26 @@ router = Router()
 
 MIN_PLAYERS = base_game.min_players
 MAX_PLAYERS = base_game.max_players
+
+
+cmds: dict[str, BotCommand] = {
+    "start": BotCommand(command="start", description="Start a new lobby."),
+    "cancel": BotCommand(command="cancel", description="Cancel current lobby."),
+    "join": BotCommand(command="join", description="Join the current lobby."),
+    "leave": BotCommand(command="leave", description="Leave the current lobby."),
+    "create_simple": BotCommand(
+        command="create_simple",
+        description="Create a game with 'simple' startup.",
+    ),
+    "create_secret": BotCommand(
+        command="create_secret",
+        description="Create a game with 'secret' startup.",
+    ),
+    "create_pick_ban": BotCommand(
+        command="create_pick_ban",
+        description="Create a game with 'pick/ban' startup.",
+    ),
+}
 
 
 class PrivateOnly(Filter):
@@ -78,8 +98,8 @@ async def show_status(message: Message) -> None:
     await message.answer("Current players: " + ", ".join(member_names))
 
 
-@router.message(Command("start"), GroupOnly())
-async def cmd_start(message: Message) -> None:
+@router.message(Command(cmds["start"]), GroupOnly())
+async def cmd_start(message: Message, bot: Bot) -> None:
     """Start a new game."""
     chat_id = message.chat.id
     uid = message.from_user.id
@@ -97,20 +117,23 @@ async def cmd_start(message: Message) -> None:
         f"<b>{message.from_user.full_name}</b> is starting a new game!"
         + "\nYou can /join or /leave the lobby."
         + "\nYou can also /cancel the game."
-        + "\nOnce everyone has joined, /create the game."
+        + "\nOnce everyone has joined, create the game with some setup:\n"
+        + "\n".join(
+            [f"/{k} : {v.description}" for k, v in cmds.items() if "create" in k]
+        )
     )
     await message.answer(reply)
     await show_status(message)
 
 
 @router.message
-@router.message(Command("start"))
+@router.message(Command(cmds["start"]))
 async def cmd_bad_start(message: Message) -> None:
     """Can'."""
     await message.answer("This bot can only be used in a group.")
 
 
-@router.message(Command("cancel"), GroupOnly())
+@router.message(Command(cmds["cancel"]), GroupOnly())
 async def cmd_cancel(message: Message) -> None:
     """Cancel the current game."""
     chat_id = message.chat.id
@@ -123,7 +146,7 @@ async def cmd_cancel(message: Message) -> None:
         await message.answer("There is no active game.")
 
 
-@router.message(Command("join"), GroupOnly(), InLobby(state))
+@router.message(Command(cmds["join"]), GroupOnly(), InLobby(state))
 async def cmd_join(message: Message) -> None:
     """Join the current game."""
     chat_id = message.chat.id
@@ -136,7 +159,7 @@ async def cmd_join(message: Message) -> None:
     await show_status(message)
 
 
-@router.message(Command("leave"), GroupOnly(), InLobby(state))
+@router.message(Command(cmds["leave"]), GroupOnly(), InLobby(state))
 async def cmd_leave(message: Message) -> None:
     """Leave the current game."""
     chat_id = message.chat.id
@@ -190,7 +213,7 @@ async def pm_get_msg(message: Message):
     await queue.put(message.text)
 
 
-@router.message(Command("create-simple"), GroupOnly(), InLobby(state))
+@router.message(Command(cmds["create_simple"]), GroupOnly(), InLobby(state))
 async def cmd_create_simple(message: Message, bot: Bot) -> None:
     """Create a game setup."""
     chat_id = message.chat.id
@@ -254,7 +277,7 @@ async def cmd_create_simple(message: Message, bot: Bot) -> None:
     del state.rooms[chat_id]
 
 
-@router.message(Command("create"), GroupOnly(), InLobby(state))
+@router.message(Command(cmds["create_secret"]), GroupOnly(), InLobby(state))
 async def cmd_create_secret(message: Message, bot: Bot) -> None:
     """Create a game setup."""
     chat_id = message.chat.id
@@ -341,3 +364,26 @@ async def cmd_create_secret(message: Message, bot: Bot) -> None:
     msg.append("Have fun! Use /start to create a new one.")
     await message.answer("\n".join(msg), disable_web_page_preview=True)
     del state.rooms[chat_id]
+
+
+@router.message(Command(cmds["create_pick_ban"]), GroupOnly(), InLobby(state))
+async def cmd_create_pick_ban(message: Message, bot: Bot) -> None:
+    """Create a game setup."""
+    chat_id = message.chat.id
+    uid = message.from_user.id  # noqa
+    room = state.rooms[chat_id]
+    if len(room.users) < MIN_PLAYERS:
+        await message.answer(f"Need at least {MIN_PLAYERS} players; some should /join")
+        return
+    elif len(room.users) > MAX_PLAYERS:
+        await message.answer(f"Need at most {MAX_PLAYERS} players; some should /leave")
+        return
+
+    await message.answer("Not implemented yet, sorry.")
+    return
+
+    # Set seed and RNG
+    seed = int(datetime.utcnow().timestamp() * 1000)
+    rng = Random(seed)  # noqa
+    await message.answer(f"Using seed: {seed}")
+    await message.answer_dice()

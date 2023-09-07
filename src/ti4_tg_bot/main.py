@@ -5,7 +5,7 @@ import logging
 
 from aiogram import Bot, Dispatcher
 
-from ti4_tg_bot.bot.logic import router
+from ti4_tg_bot.bot.logic import cmds, router
 
 
 async def async_main() -> None:
@@ -19,6 +19,10 @@ async def async_main() -> None:
 
     # Initialize Bot instance with a default parse mode which will be passed to all API
     bot = Bot(TOKEN, parse_mode="HTML")
+
+    # Set commands
+    await bot.set_my_commands([v for k, v in cmds.items()])
+
     # And the run events dispatching
     await dp.start_polling(bot)
 
