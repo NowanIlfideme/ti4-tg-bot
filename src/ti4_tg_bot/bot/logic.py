@@ -9,7 +9,7 @@ from aiogram.enums import ChatType
 from aiogram.filters import Command, Filter
 from aiogram.types import Message, User, BotCommand
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
 from ti4_tg_bot.data import base_game
 from ti4_tg_bot.state.room import GlobalState, Room
@@ -126,11 +126,14 @@ async def cmd_start(message: Message, bot: Bot) -> None:
     await show_status(message)
 
 
-@router.message
 @router.message(Command(cmds["start"]))
 async def cmd_bad_start(message: Message) -> None:
-    """Can'."""
-    await message.answer("This bot can only be used in a group.")
+    """Start interacting."""
+    await message.answer(
+        "Hi, you will now be able to properly join TI4 games."
+        " I will come back to you for secret choices."
+        "\nTo start a game, add me to a group and use the start command there."
+    )
 
 
 @router.message(Command(cmds["cancel"]), GroupOnly())
@@ -170,6 +173,67 @@ async def cmd_leave(message: Message) -> None:
         room.users.remove(uid)
 
     await show_status(message)
+
+
+WAIT_MINS: float = 1 * 60
+"""How long to wait for users to add."""
+
+REFRESH_MINS: float = 0.1
+"""How often to refresh the check for added users."""
+
+
+async def wait_until_users_add_me(bot: Bot, state: GlobalState, chat_id: int) -> bool:
+    """Ensure that all users in the list have added the bot.
+
+    Returns:
+        True if all users have added.
+        False if a timeout occurs.
+
+    This means that the bot can reply to the users.
+    Bots can't initiate chats - it's a Telegram-side limitation to stop spam.
+    """
+    time_start = datetime.utcnow()
+    while (datetime.utcnow() - time_start).total_seconds() < 60 * WAIT_MINS:
+        room = state.rooms.get(chat_id)
+        # If room is canceled
+        if room is None:
+            await bot.send_message(chat_id, "Cancelling game.")
+            return False
+
+        # Check if we can message users
+        unmessagable: list[int] = []
+        for user_id in room.users:
+            # If we don't have a chat, then we fail immediately
+            try:
+                user_chat_info = await bot.get_chat(user_id)
+            except TelegramBadRequest:
+                unmessagable.append(user_id)
+                continue
+            # If we've been blocked or muted, we might not have permissions
+            perms = user_chat_info.permissions
+            if perms is not None:
+                if not perms.can_send_messages:
+                    unmessagable.append(user_id)
+
+        # If we can message everyone, return True
+        if len(unmessagable) == 0:
+            return True
+
+        # Otherwise, ping those users
+        chat = await bot.get_chat(chat_id)
+        unmess_members = [await chat.get_member(x) for x in unmessagable]
+        unmess_ats = [f"{get_at(x.user)}" for x in unmess_members]
+        await bot.send_message(
+            chat_id,
+            "The following users need to send /start to me in a private chat: "
+            + " ".join(unmess_ats),
+        )
+        await asyncio.sleep(60 * REFRESH_MINS)
+
+    await bot.send_message(
+        chat_id, f"Timed out after {WAIT_MINS} minutes. Cancelling game."
+    )
+    return False
 
 
 async def ask_selection(
@@ -224,6 +288,10 @@ async def cmd_create_secret_only_pick(message: Message, bot: Bot) -> None:
         return
     elif len(room.users) > MAX_PLAYERS:
         await message.answer(f"Need at most {MAX_PLAYERS} players; some should /leave")
+        return
+
+    # Wait until all users have added the bot
+    if not await wait_until_users_add_me(bot=bot, state=state, chat_id=chat_id):
         return
 
     # Set seed and RNG
@@ -297,6 +365,10 @@ async def cmd_create_public_pick_ban(message: Message, bot: Bot) -> None:
         return
     elif len(room.users) > MAX_PLAYERS:
         await message.answer(f"Need at most {MAX_PLAYERS} players; some should /leave")
+        return
+
+    # Wait until all users have added the bot
+    if not await wait_until_users_add_me(bot=bot, state=state, chat_id=chat_id):
         return
 
     # Set seed and RNG
@@ -386,6 +458,10 @@ async def cmd_create_public_ban_pick(message: Message, bot: Bot) -> None:
         return
     elif len(room.users) > MAX_PLAYERS:
         await message.answer(f"Need at most {MAX_PLAYERS} players; some should /leave")
+        return
+
+    # Wait until all users have added the bot
+    if not await wait_until_users_add_me(bot=bot, state=state, chat_id=chat_id):
         return
 
     await message.answer("Not implemented yet, sorry.")
