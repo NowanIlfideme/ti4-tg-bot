@@ -12,11 +12,12 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
 from ti4_tg_bot.data import base_game
-from ti4_tg_bot.state.room import GlobalState, Room
+from ti4_tg_bot.state.room import GlobalState, Room, UserID
 
 state = GlobalState()
 router = Router()
 
+USE_LOCATION = False
 
 MIN_PLAYERS = base_game.min_players
 MAX_PLAYERS = base_game.max_players
@@ -281,7 +282,7 @@ async def pm_get_msg(message: Message):
 async def cmd_create_secret_only_pick(message: Message, bot: Bot) -> None:
     """All players pick 1 of 3 factions, at the same time."""
     chat_id = message.chat.id
-    uid = message.from_user.id  # noqa
+    # uid = message.from_user.id  # noqa
     room = state.rooms[chat_id]
     if len(room.users) < MIN_PLAYERS:
         await message.answer(f"Need at least {MIN_PLAYERS} players; some should /join")
@@ -346,7 +347,8 @@ async def cmd_create_secret_only_pick(message: Message, bot: Bot) -> None:
         fac_link = [x for x in game.factions if x.name == fac][0].wiki
         fac_o = f'<a href="{fac_link}">{fac}</a>'
         loc = "(no location)"
-        msg.append(f"{i+1}. {uname} as <b>{fac_o}</b> at <b>{loc}</b>")
+        loc_o = f" at <b>{loc}</b>" if USE_LOCATION else ""
+        msg.append(f"{i+1}. {uname} as <b>{fac_o}</b>{loc_o}")
 
     # Close game state
     msg.append("Have fun! Use /start to create a new one.")
@@ -424,7 +426,14 @@ async def cmd_create_public_pick_ban(message: Message, bot: Bot) -> None:
         )
         banned[uid] = banned_i
         remaining_factions.remove(banned_i)
-        # TODO: Do we notify folks?
+
+        # Notify folks of pick-ban
+        uname = order_names[i]
+        fac = picked_i
+        fac_info = [x for x in game.factions if x.name == picked_i][0]
+        fac_link = fac_info.wiki
+        fac_o = f'<a href="{fac_link}">{picked_i}</a>'
+        await message.answer(f"{uname} picked {fac_o} and banned <b>{banned_i}</b>")
         # TODO: Selection of location too?...
 
     # Return results
@@ -437,9 +446,8 @@ async def cmd_create_public_pick_ban(message: Message, bot: Bot) -> None:
         fac_link = fac_info.wiki
         fac_o = f'<a href="{fac_link}">{fac}</a>'
         loc = "(no location)"
-        msg.append(
-            f"{i+1}. {uname} banned {ban_i}, playing as <b>{fac_o}</b> at <b>{loc}</b>"
-        )
+        loc_o = f" at <b>{loc}</b>" if USE_LOCATION else ""
+        msg.append(f"{i+1}. {uname} banned {ban_i}, playing as <b>{fac_o}</b>{loc_o}")
 
     # Close game state
     msg.append("Have fun! Use /start to create a new one.")
@@ -451,7 +459,7 @@ async def cmd_create_public_pick_ban(message: Message, bot: Bot) -> None:
 async def cmd_create_public_ban_pick(message: Message, bot: Bot) -> None:
     """Create a game setup."""
     chat_id = message.chat.id
-    uid = message.from_user.id  # noqa
+    # uid = message.from_user.id  # noqa
     room = state.rooms[chat_id]
     if len(room.users) < MIN_PLAYERS:
         await message.answer(f"Need at least {MIN_PLAYERS} players; some should /join")
@@ -464,11 +472,71 @@ async def cmd_create_public_ban_pick(message: Message, bot: Bot) -> None:
     if not await wait_until_users_add_me(bot=bot, state=state, chat_id=chat_id):
         return
 
-    await message.answer("Not implemented yet, sorry.")
-    return
-
     # Set seed and RNG
     seed = int(datetime.utcnow().timestamp() * 1000)
     rng = Random(seed)  # noqa
     await message.answer(f"Using seed: {seed}")
     await message.answer_dice()
+
+    # Create order
+    user_order = rng.sample(room.users, k=len(room.users))
+    order_mems = [await message.chat.get_member(x) for x in user_order]
+    order_names = [f"{get_at(x.user)}" for x in order_mems]
+    await message.answer(
+        "Choosing Order:\n"
+        + "\n".join([f"{i+1}. {nm}" for i, nm in enumerate(order_names)])
+    )
+
+    # Select game mode
+    game = base_game
+
+    remaining_factions = list(game.faction_names)
+
+    selected: dict[UserID, str] = {}
+    banned: dict[UserID, str] = {}  # not used right now, but maybe later
+
+    # BAN in player order
+    await message.answer("BANNING (in order):")
+    for uid, uname in zip(user_order, order_names):
+        ban_i = await ask_selection(
+            bot=bot,
+            state=state,
+            prompt="Choose faction to BAN.",
+            options=remaining_factions,
+            user_id=uid,
+        )
+        banned[uid] = ban_i
+        remaining_factions.remove(ban_i)
+        await message.answer(f"{uname} bans {ban_i}")
+
+    # SELECT in reverse order
+    await message.answer("SELECTING (in reverse order):")
+    for uid, uname in reversed(list(zip(user_order, order_names))):
+        sel_i = await ask_selection(
+            bot=bot,
+            state=state,
+            prompt="Choose faction to PLAY.",
+            options=remaining_factions,
+            user_id=uid,
+        )
+        selected[uid] = sel_i
+        remaining_factions.remove(sel_i)
+        await message.answer(f"{uname} plays as {sel_i}")
+
+    # Return results
+    msg = ["Finished game setup."]
+    for i, uid in enumerate(user_order):
+        uname = order_names[i]
+        fac = selected[uid]
+        # ban_i = banned[uid]
+        fac_info = [x for x in game.factions if x.name == fac][0]
+        fac_link = fac_info.wiki
+        fac_o = f'<a href="{fac_link}">{fac}</a>'
+        loc = "(no location)"
+        loc_o = f" at <b>{loc}</b>" if USE_LOCATION else ""
+        msg.append(f"{i+1}. {uname} playing as <b>{fac_o}</b>{loc_o}")
+
+    # Close game state
+    msg.append("Have fun! Use /start to create a new one.")
+    await message.answer("\n".join(msg), disable_web_page_preview=True)
+    del state.rooms[chat_id]
