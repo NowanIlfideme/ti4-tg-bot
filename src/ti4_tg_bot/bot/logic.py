@@ -17,7 +17,20 @@ from ti4_tg_bot.state.room import GlobalState, Room, UserID
 state = GlobalState()
 router = Router()
 
+BOTNAME = "TwilightGenBot"
+CLEANUP_KEYBOARD = True
 USE_LOCATION = False
+HELP_STR = f"""Hello! I help set up games of Twilight Imperium: 4th Edition. \
+Right now, I can only help with picking factions from the base game.
+
+In order to start, create a group chat and add me: @{BOTNAME}
+Please tell everyone to add me (click on me and /start the private conversation). \
+Otherwise, I'll be unable to message them, and we'll be waiting a long time...
+
+In your group chat, you can /start the lobby.
+Everyone who wants to play should /join the lobby.
+Once everyone joined, choose one of the "create_*" commands to start faction selection.
+"""
 
 MIN_PLAYERS = base_game.min_players
 MAX_PLAYERS = base_game.max_players
@@ -25,6 +38,7 @@ MAX_PLAYERS = base_game.max_players
 
 cmds: dict[str, BotCommand] = {
     "start": BotCommand(command="start", description="Start a new lobby."),
+    "help": BotCommand(command="help", description="Get help for this bot."),
     "cancel": BotCommand(command="cancel", description="Cancel current lobby."),
     "join": BotCommand(command="join", description="Join the current lobby."),
     "leave": BotCommand(command="leave", description="Leave the current lobby."),
@@ -85,6 +99,12 @@ def get_at(user: User) -> str:
     return user.full_name
 
 
+@router.message(Command(cmds["help"]))
+async def cmd_help(message: Message) -> None:
+    """Send help."""
+    await message.answer(HELP_STR)
+
+
 async def show_status(message: Message) -> None:
     """Show current status of the lobby."""
     chat_id = message.chat.id
@@ -100,7 +120,7 @@ async def show_status(message: Message) -> None:
 
 
 @router.message(Command(cmds["start"]), GroupOnly())
-async def cmd_start(message: Message, bot: Bot) -> None:
+async def cmd_group_start(message: Message, bot: Bot) -> None:
     """Start a new game."""
     chat_id = message.chat.id
     uid = message.from_user.id
@@ -116,9 +136,10 @@ async def cmd_start(message: Message, bot: Bot) -> None:
     # Reply to the chat.
     reply = (
         f"<b>{message.from_user.full_name}</b> is starting a new game!"
-        + "\nYou can /join or /leave the lobby."
+        + "\n\nYou can /join or /leave the lobby."
         + "\nYou can also /cancel the game."
-        + "\nOnce everyone has joined, create the game with some setup:\n"
+        + f"\n\n<b>Please make sure to add @{BOTNAME} in personal chats.</b>"
+        + "\n\nOnce everyone has joined, create the game with some setup:\n"
         + "\n".join(
             [f"/{k} : {v.description}" for k, v in cmds.items() if "create" in k]
         )
@@ -128,12 +149,13 @@ async def cmd_start(message: Message, bot: Bot) -> None:
 
 
 @router.message(Command(cmds["start"]))
-async def cmd_bad_start(message: Message) -> None:
+async def cmd_personal_start(message: Message) -> None:
     """Start interacting."""
     await message.answer(
         "Hi, you will now be able to properly join TI4 games."
         " I will come back to you for secret choices."
         "\nTo start a game, add me to a group and use the start command there."
+        " You can also ask for more /help if necessary."
     )
 
 
@@ -259,12 +281,20 @@ async def ask_selection(
         if value in options:
             break
         await bot.send_message(
+            user_id,
             "\n".join(["Incorrect choice, choose one of:", *options]),
             reply_markup=reply_kb.as_markup(),
         )
+    from aiogram.types.reply_keyboard_remove import ReplyKeyboardRemove
 
     # Cleanup
     del state.queues[user_id]
+    if CLEANUP_KEYBOARD:
+        await bot.send_message(
+            user_id,
+            f"Selection: {value!r}",
+            reply_markup=ReplyKeyboardRemove(remove_keyboard=True),
+        )
     return value
 
 
