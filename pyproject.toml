@@ -22,6 +22,10 @@ dependencies = [
     "pydantic-yaml~=1.0.0a1",
     "importlib_metadata",
     "typing_extensions>=4.5.0",
+    #
+    "Pillow~=10.0.1",
+    "requests~=2.31.0",
+    "beautifulsoup4~=4.12.2",
 ]
 urls = { github = "https://github.com/NowanIlfideme/pydantic-yaml", docs = "https://pydantic-yaml.readthedocs.io/en/latest/" }
 
