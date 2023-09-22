@@ -115,7 +115,7 @@ async def show_status(message: Message) -> None:
 
     room = state.rooms[chat_id]
     members = [await message.chat.get_member(x) for x in room.users]
-    member_names = [f"{get_at(x.user)}" for x in members]
+    member_names = [f"{get_at(x.user)[1:]}" for x in members]
     await message.answer("Current players: " + ", ".join(member_names))
 
 
