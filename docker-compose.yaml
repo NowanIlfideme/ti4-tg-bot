@@ -1,0 +1,15 @@
+version: '3.9'
+
+secrets:
+  tg_token:
+    file: ./secret/tg_token
+
+services:
+  ti4bot:
+    container_name: ti4bot
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    secrets:
+      - tg_token
