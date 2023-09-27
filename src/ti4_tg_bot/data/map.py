@@ -1,7 +1,7 @@
 """Data models for the map."""
 
-from .models import *  # FIXME specific imports
-
+from pydantic import BaseModel
+from .models import Tile
 
 Idx = tuple[int, int]
 Adj = tuple[Idx, Idx]
