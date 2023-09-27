@@ -8,5 +8,5 @@ dependencies:
       - -e .[dev]
       - aiohttp[speedups]
       - uvloop
-      - cchardet
+      - faust-cchardet
       - aiodns

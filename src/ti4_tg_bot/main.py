@@ -10,8 +10,12 @@ from ti4_tg_bot.bot.logic import cmds, router
 
 async def async_main() -> None:
     """Async main runner."""
-    with open("secret/tg_token") as f:
-        TOKEN = f.read()
+    try:
+        with open("/run/secrets/tg_token") as f:
+            TOKEN = f.read()
+    except Exception:
+        with open("secret/tg_token") as f:
+            TOKEN = f.read()
     # Dispatcher is a root router
     dp = Dispatcher()
     # ... and all other routers should be attached to Dispatcher
