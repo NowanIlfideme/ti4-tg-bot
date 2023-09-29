@@ -135,8 +135,8 @@ class HexCoord(RootModel[tuple[int, int, int]]):
 
 
 HEX_UNIT_VECTORS = tuple(
-    HexCoord(_)
-    for _ in [(1, 0, -1), (1, -1, 0), (0, -1, 1), (-1, 0, 1), (-1, 1, 0), (0, 1, -1)]
+    HexCoord(root=_tup)
+    for _tup in [(1, 0, -1), (1, -1, 0), (0, -1, 1), (-1, 0, 1), (-1, 1, 0), (0, 1, -1)]
 )
 """Vector directions in 'cube' coordinates for hexes."""
 
@@ -189,7 +189,7 @@ class HexField(BaseModel, Generic[ObjType]):
         *,
         top_style: Literal["flat", "pointy"] = "flat",
         scale: float = 1.0,
-        invert_y: float = True,
+        invert_y: bool = True,
     ) -> "HexField[ObjType]":
         """Get field from an XY coordinate map.
 

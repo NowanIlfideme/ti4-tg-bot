@@ -7,11 +7,8 @@ from PIL.Image import new as img_new
 from .hexes import HexField
 
 
-BBoxFloat = tuple[float, float, float, float]
-"""(left, upper, right, lower)"""
-
 BBoxInt = tuple[int, int, int, int]
-"""(left, upper, right, lower)"""
+"""Bounding box: (left, upper, right, lower)."""
 
 
 class HexImageField(HexField[Image]):
@@ -28,7 +25,6 @@ class HexImageField(HexField[Image]):
 
         # Find bbox coordinates for every image
         imgs: list[Image] = []
-        bboxes_f: list[BBoxFloat] = []
         bboxes_i: list[BBoxInt] = []
         for (center_xi, center_yi), img_i in self.to_xy().items():
             imgs.append(img_i)
@@ -39,9 +35,8 @@ class HexImageField(HexField[Image]):
                 center_xi + wi / 2,
                 center_yi + hi / 2,
             )
-            bboxes_f.append(bbi)
-            bboxes_i.append(tuple([int(p) for p in bbi]))
-            # bboxes_i.append(tuple([round(p) for p in bbi]))
+            bboxes_i.append((int(bbi[0]), int(bbi[1]), int(bbi[2]), int(bbi[3])))
+            # bboxes_i.append(tuple([round(p) for p in bbi]))  # less consistent
 
         # Calculate output bounding box and offsets
         min_x, min_y, max_x, max_y = bboxes_i[0]  # set at non-default ablues
