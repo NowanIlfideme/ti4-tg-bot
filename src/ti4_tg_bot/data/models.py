@@ -73,6 +73,13 @@ class TileSet(BaseModel):
     red_tiles: list[Tile]
     home_tiles: list[Tile]
 
+    @property
+    def all_tiles(self) -> list[Tile]:
+        """Get all tiles as a list, sorted by number."""
+        raw = [self.mecatol] + self.blue_tiles + self.red_tiles + self.home_tiles
+        res = sorted(raw, key=lambda x: x.number)
+        return res
+
 
 class Faction(BaseModel):
     """Faction information."""
