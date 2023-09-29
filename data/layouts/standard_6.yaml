@@ -1,4 +1,4 @@
-name: "Standard 3-ring hex"
+name: "Standard 6-player Map"
 players: 6
 fixed_tiles:
   - number: 18 # Mecatol
