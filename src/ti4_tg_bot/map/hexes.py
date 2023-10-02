@@ -4,7 +4,7 @@ from math import sqrt
 from typing import Any, Generic, TypeVar, Literal
 
 from typing_extensions import Annotated
-from pydantic import BaseModel, RootModel, model_validator, Field
+from pydantic import BaseModel, RootModel, model_validator, Field, computed_field
 
 
 class HexCoord(RootModel[tuple[int, int, int]]):
@@ -158,11 +158,10 @@ class HexField(BaseModel, Generic[ObjType]):
     scale: Annotated[float, Field(description="Size of a hexagon side.")] = 1.0
     invert_y: bool = True
 
-    def to_xy(self) -> dict[XYCoord, ObjType]:
-        """Convert cells to XY coordinates (of their centers).
-
-        https://www.redblobgames.com/grids/hexagons/#hex-to-pixel
-        """
+    @computed_field
+    @property
+    def basis_qr_to_xy(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Matrix convertin QR to XY coords."""
         # Basis vectors of 'q' and 'r' to 'xy' coords.
         y_sign = -1 if self.invert_y else 1
         if self.top_style == "flat":
@@ -171,14 +170,27 @@ class HexField(BaseModel, Generic[ObjType]):
         else:  # pointy
             (qx, qy) = (sqrt(3), 0 * y_sign)
             (rx, ry) = (sqrt(3) / 2, 1.5 * y_sign)
+        return ((qx, qy), (rx, ry))
 
+    def cell_to_xy(self, hexcoord: HexCoord) -> XYCoord:
+        """Convert a hex coord to XY coordinates."""
+        ((qx, qy), (rx, ry)) = self.basis_qr_to_xy
+
+        qi = hexcoord.q
+        ri = hexcoord.r
+        xi = (qi * qx + ri * rx) * self.scale
+        yi = (qi * qy + ri * ry) * self.scale
+        return xi, yi
+
+    def to_xy(self) -> dict[XYCoord, ObjType]:
+        """Convert cells to XY coordinates (of their centers).
+
+        https://www.redblobgames.com/grids/hexagons/#hex-to-pixel
+        """
         # Convert coordinates
         res: dict[XYCoord, ObjType] = {}
         for hexcoord, obj in self.cells.items():
-            qi = hexcoord.q
-            ri = hexcoord.r
-            xi = (qi * qx + ri * rx) * self.scale
-            yi = (qi * qy + ri * ry) * self.scale
+            xi, yi = self.cell_to_xy(hexcoord)
             res[(xi, yi)] = obj
         return res
 

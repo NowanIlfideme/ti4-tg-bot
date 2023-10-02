@@ -4,6 +4,7 @@ from PIL.Image import Image
 from PIL.Image import new as img_new
 
 
+from .annots import TextMapAnnotation
 from .hexes import HexField
 
 
@@ -16,6 +17,7 @@ class HexImageField(HexField[Image]):
 
     # make sure to scale properly...
     # FIXME: x and y scales might not be exactly correct in images...
+    annotations: list[TextMapAnnotation] = []
 
     def merge_to_image(self) -> Image:
         """Merge all images to a single one."""
@@ -61,5 +63,8 @@ class HexImageField(HexField[Image]):
                 lower_i + offset_y,
             )
             res.paste(img_i, new_bbox, mask=img_i)
+        for ann in self.annotations:
+            xc, yc = self.cell_to_xy(ann.cell)
+            ann.add_to_image(res, center=(offset_x + xc, offset_y + yc))
 
         return res
