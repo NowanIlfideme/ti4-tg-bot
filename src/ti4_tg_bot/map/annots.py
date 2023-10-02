@@ -45,7 +45,7 @@ class TextMapAnnotation(MapAnnotation):
 
     text: str
     # Other options
-    font_size: int = 50
+    font_size: int = 80
     rect_radius: int = 5
 
     def to_image(self) -> Image:

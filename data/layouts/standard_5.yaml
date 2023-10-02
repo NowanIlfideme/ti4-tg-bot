@@ -4,11 +4,14 @@ fixed_tiles:
   - number: 18 # Mecatol
     at: [0, 0]
 home_tiles:
-  - [3, 0]
   - [-1, 3]
-  - [0, -3]
-  - [3, -3]
   - [-3, 1]
+  - at: [3, 0]
+    more: "+2 TG"
+  - at: [0, -3]
+    more: "+2 TG"
+  - at: [3, -3]
+    more: "+4 TG"
 free_tiles: # generated as difference
   - [-3, 3]
   - [1, -3]

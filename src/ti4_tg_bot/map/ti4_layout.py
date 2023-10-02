@@ -4,6 +4,7 @@ from typing_extensions import Annotated
 from pydantic import BaseModel, Field, TypeAdapter, FieldValidationInfo, field_validator
 
 from ti4_tg_bot.data.models import GameInfo
+from .annots import TextMapAnnotation
 from .hexes import HexCoord
 from .ti4_map import TIMaybeMap, PlaceholderTile
 
@@ -12,13 +13,20 @@ CoordLike = HexCoord | tuple[int, int] | tuple[int, int, int]
 to_coord = TypeAdapter(HexCoord).validate_python
 
 
+class CoordWithAnnotation(BaseModel):
+    """Coordinate with additional annotation."""
+
+    at: HexCoord
+    more: str
+
+
 class TILayout(BaseModel):
     """Layout definition, with proper types."""
 
     name: str
     players: Annotated[int, Field(ge=2)]
     fixed_tiles: dict[HexCoord, int] = {}
-    home_tiles: list[HexCoord]
+    home_tiles: list[HexCoord | CoordWithAnnotation]
     free_tiles: list[HexCoord]
 
     @field_validator("home_tiles", mode="after")
@@ -35,17 +43,26 @@ class TILayout(BaseModel):
     def to_maybe_map(self, game_info: GameInfo) -> TIMaybeMap:
         """Convert to map."""
         cells = {}
+        annotations: list[TextMapAnnotation] = []
         num_to_tile = {x.number: x for x in game_info.tiles.all_tiles}
         # Set free tiles
         for coord in self.free_tiles:
             cells[coord] = PlaceholderTile(is_home=False)
         # Set home tiles
-        for coord in self.home_tiles:
+        for coord_or_wann in self.home_tiles:
+            if isinstance(coord_or_wann, HexCoord):
+                coord = coord_or_wann
+                ann = None
+            else:
+                coord = coord_or_wann.at
+                ann = coord_or_wann.more
             cells[coord] = PlaceholderTile(is_home=True)
+            if ann is not None:
+                annotations.append(TextMapAnnotation(cell=coord, text=ann))
         # Set fixed tiles
         for coord, tile_num in self.fixed_tiles.items():
             cells[coord] = num_to_tile[tile_num]
-        return TIMaybeMap(cells=cells)
+        return TIMaybeMap(cells=cells, annotations=annotations)
 
 
 class _FixedTile(BaseModel):
@@ -66,13 +83,18 @@ class YamlTILayout(BaseModel):
     name: str
     players: Annotated[int, Field(ge=2)]
     fixed_tiles: list[_FixedTile] = []
-    home_tiles: list[CoordLike]
+    home_tiles: list[CoordLike | CoordWithAnnotation]
     free_tiles: list[CoordLike]
 
     def fix_layout(self) -> TILayout:
         """Convert to proper layout."""
         fixed_tiles = {to_coord(ft.at): ft.number for ft in self.fixed_tiles}
-        home_tiles = [to_coord(ht) for ht in self.home_tiles]
+        home_tiles = []
+        for ht in self.home_tiles:
+            if isinstance(ht, CoordWithAnnotation):
+                home_tiles.append(ht)
+            else:
+                home_tiles.append(to_coord(ht))
         free_tiles = [to_coord(ft) for ft in self.free_tiles]
         return TILayout(
             name=self.name,
