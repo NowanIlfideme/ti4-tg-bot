@@ -17,9 +17,9 @@ license = { file = "LICENSE" }
 authors = [{ name = "NowanIlfideme", email = "git@nowan.dev" }]
 
 dependencies = [
-    "aiogram~=3.0.0b7",
-    "pydantic<2",
-    "pydantic-yaml~=1.0.0a1",
+    "aiogram~=3.1.1",
+    "pydantic>=2",
+    "pydantic-yaml~=1.2.0",
     "importlib_metadata",
     "typing_extensions>=4.5.0",
     #
@@ -27,7 +27,7 @@ dependencies = [
     "requests~=2.31.0",
     "beautifulsoup4~=4.12.2",
 ]
-urls = { github = "https://github.com/NowanIlfideme/pydantic-yaml", docs = "https://pydantic-yaml.readthedocs.io/en/latest/" }
+urls = { github = "https://github.com/NowanIlfideme/ti4-tg-bot" }
 
 [project.optional-dependencies]
 dev = [
