@@ -65,7 +65,7 @@ class TextMapAnnotation(MapAnnotation):
         d = Draw(img)
         d.rounded_rectangle(
             (0, 0, w, h),
-            radius=5,
+            radius=rect_radius,
             outline=(0, 0, 0, 255),  # black outline
             fill=(255, 255, 255, 255),  # white fill
             width=3,
