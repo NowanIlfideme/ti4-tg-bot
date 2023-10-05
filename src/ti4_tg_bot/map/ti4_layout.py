@@ -63,7 +63,12 @@ class TILayout(BaseModel):
             coord = htile.at
             cells[coord] = PlaceholderTile(home_name=htile.name)
             annotations.append(
-                TextMapAnnotation(cell=coord, text=htile.full_annotation)
+                TextMapAnnotation(
+                    cell=coord,
+                    text=htile.full_annotation,
+                    offset=(-150, 0),
+                    font_size=80,
+                )
             )
         # Set fixed tiles
         for coord, tile_num in self.fixed_tiles.items():

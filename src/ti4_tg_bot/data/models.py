@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, model_validator
 
 
 class Wormhole(str, Enum):
@@ -100,3 +100,15 @@ class GameInfo(BaseModel):
     def faction_names(self) -> list[str]:
         """Faction names."""
         return [x.name for x in self.factions]
+
+    @model_validator(mode="after")
+    def _chk_faction_tiles(self) -> "GameInfo":
+        """Ensure faction tiles correspond to the factions."""
+        tile_races = {ht.race for ht in self.tiles.home_tiles}
+        fns = set(self.faction_names)
+        if tile_races != fns:
+            raise ValueError(
+                f"Faction mismatch: {tile_races - fns}, {fns - tile_races}"
+            )
+
+        return self

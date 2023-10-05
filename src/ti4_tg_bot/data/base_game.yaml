@@ -392,7 +392,7 @@ tiles:
           trait: NO_TRAIT
           tech: NO_TECH
     - number: 3
-      race: The Brotherhood of Yin
+      race: The Yin Brotherhood
       wormhole: NO_WORMHOLE
       anomaly: NO_ANOMALY
       planets:
