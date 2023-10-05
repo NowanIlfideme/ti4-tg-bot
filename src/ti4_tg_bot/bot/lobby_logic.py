@@ -56,6 +56,62 @@ def make_joiner_kb() -> InlineKeyboardBuilder:
     return builder
 
 
+class GameMaster(object):
+    """Game master handler."""
+
+    def __init__(self, last_msg: Message, users: dict[UserID, User]) -> None:
+        # Stuff
+        self.last_msg = last_msg
+        self.users = dict(users)
+        #
+        self.mgh = MapGenHelper()
+
+    @property
+    def chat(self) -> Chat:
+        return self.last_msg.chat
+
+    def generate_map(self, map_name: str) -> tuple[TIMaybeMap, FSInputFile]:
+        """Generate a map."""
+        n_players = len(self.users)
+        my_map, my_img = self.mgh.gen_random_map(
+            n_players=n_players, map_title=map_name
+        )
+        tmpdir = tempfile.TemporaryDirectory().__enter__()  # yeah I know, sue me
+        Path(tmpdir).mkdir(exist_ok=True, parents=True)
+        file_name = f"{tmpdir}/{map_name}.jpg"
+        my_img.convert("RGB").save(file_name)
+        return my_map, FSInputFile(file_name)
+
+    async def start_game(self, leader: User) -> None:
+        """Start the game."""
+        N_MAPS = 3
+        POLL_ACTIVE_SEC = 60
+
+        await self.last_msg.answer("Generating map...")
+        map_pairs = [self.generate_map(f"map_{i+1}") for i in range(N_MAPS)]
+        map_grp = MediaGroupBuilder(caption="Map Options")
+        for mp, fsif in map_pairs:
+            map_grp.add_photo(fsif)
+        await self.last_msg.answer_media_group(media=map_grp.build())
+        poll_msg = await self.last_msg.answer_poll(
+            "Choose a map.",
+            options=[f"Map {i+1}" for i in range(N_MAPS)],
+            open_period=POLL_ACTIVE_SEC,
+            is_anonymous=False,
+        )
+        await asyncio.sleep(POLL_ACTIVE_SEC)
+        await poll_msg.answer("Let's pretend you chose the first one. ;)")
+
+        chosen_map, chosen_map_img = map_pairs[0]
+        self.last_msg = await self.last_msg.answer_photo(
+            chosen_map_img, caption="You chose Map 1."
+        )
+        chosen_map
+
+    async def add_choice(self):
+        pass
+
+
 class GlobalBackend(object):
     """Global backend."""
 
@@ -142,7 +198,7 @@ class GlobalBackend(object):
         user_str = ", ".join(u.full_name for u in users.values())
         if True:
             await msg.edit_text(f"Starting game with players: {user_str}")
-            game = GameMaster(parent=self, last_msg=msg, users=users)
+            game = GameMaster(last_msg=msg, users=users)
             self.games[chat_id] = game
             del self.lobby_msg[chat_id]
             del self.lobby_users[chat_id]
@@ -196,64 +252,4 @@ async def cb_start(query: CallbackQuery, callback_data: LobbyStatusCallback):
     user = query.from_user
     assert user is not None
 
-    # TODO
     await gback.attempt_start_game(msg.chat.id, user=user)
-
-
-class GameMaster(object):
-    """Game master handler."""
-
-    def __init__(
-        self, parent: GlobalBackend, last_msg: Message, users: dict[UserID, User]
-    ) -> None:
-        # Stuff
-        self.parent = parent
-        self.last_msg = last_msg
-        self.users = dict(users)
-        #
-        self.mgh = MapGenHelper()
-
-    @property
-    def chat(self) -> Chat:
-        return self.last_msg.chat
-
-    def generate_map(self, map_name: str) -> tuple[TIMaybeMap, FSInputFile]:
-        """Generate a map."""
-        n_players = len(self.users)
-        my_map, my_img = self.mgh.gen_random_map(
-            n_players=n_players, map_title=map_name
-        )
-        tmpdir = tempfile.TemporaryDirectory().__enter__()  # yeah I know, sue me
-        Path(tmpdir).mkdir(exist_ok=True, parents=True)
-        file_name = f"{tmpdir}/{map_name}.jpg"
-        my_img.convert("RGB").save(file_name)
-        return my_map, FSInputFile(file_name)
-
-    async def start_game(self, leader: User) -> None:
-        """Start the game."""
-        N_MAPS = 3
-        POLL_ACTIVE_SEC = 60
-
-        await self.last_msg.answer("Generating map...")
-        map_pairs = [self.generate_map(f"map_{i+1}") for i in range(N_MAPS)]
-        map_grp = MediaGroupBuilder(caption="Map Options")
-        for mp, fsif in map_pairs:
-            map_grp.add_photo(fsif)
-        await self.last_msg.answer_media_group(media=map_grp.build())
-        poll_msg = await self.last_msg.answer_poll(
-            "Choose a map.",
-            options=[f"Map {i+1}" for i in range(N_MAPS)],
-            open_period=POLL_ACTIVE_SEC,
-            is_anonymous=False,
-        )
-        await asyncio.sleep(POLL_ACTIVE_SEC)
-        await poll_msg.answer("Let's pretend you chose the first one. ;)")
-
-        chosen_map, chosen_map_img = map_pairs[0]
-        self.last_msg = await self.last_msg.answer_photo(
-            chosen_map_img, caption="You chose Map 1."
-        )
-        chosen_map
-
-    async def add_choice(self):
-        pass
