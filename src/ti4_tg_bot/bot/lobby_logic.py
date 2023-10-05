@@ -1,11 +1,18 @@
 """Logic for registering, entering and leaving lobbies."""
 
+import tempfile
+from pathlib import Path
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BotCommand, CallbackQuery, Message, User
+from aiogram.types import BotCommand, CallbackQuery, Message, User, Chat, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.media_group import MediaGroupBuilder
+
+from ti4_tg_bot.map.gen_helper import MapGenHelper
+
 
 cmds: dict[str, BotCommand] = {
     "start": BotCommand(command="start", description="Start using this bot."),
@@ -53,6 +60,7 @@ class GlobalBackend(object):
     def __init__(self):
         self.lobby_msg: dict[ChatID, Message] = {}
         self.lobby_users: dict[ChatID, dict[UserID, User]] = {}
+        self.games: dict[ChatID, "GameMaster"] = {}
 
     # Lobby Stuff
 
@@ -60,8 +68,11 @@ class GlobalBackend(object):
         """Create a lobby based on a given message."""
         # Ensure we don't already have a lobby
         chat_id = base_msg.chat.id
-        if chat_id in self.lobby_msg:
+        if chat_id in self.lobby_msg.keys():
             await base_msg.answer("Lobby already exists for this chat.")
+            return
+        elif chat_id in self.games.keys():
+            await base_msg.answer("Can't create a lobby, game is in progress.")
             return
 
         # Create lobby data
@@ -125,14 +136,15 @@ class GlobalBackend(object):
         if user.id not in users.keys():
             # TODO: lol, user isn't a player
             return
+
         user_str = ", ".join(u.full_name for u in users.values())
         if True:
-            await msg.answer(f"Starting game with players: {user_str}")
-            await msg.edit_text("Lobby is closed. /start to create a new one.")
+            await msg.edit_text(f"Starting game with players: {user_str}")
+            game = GameMaster(parent=self, last_msg=msg, users=users)
+            self.games[chat_id] = game
             del self.lobby_msg[chat_id]
             del self.lobby_users[chat_id]
-
-    # Game Stuff
+            await game.start_game(leader=user)
 
 
 gback = GlobalBackend()
@@ -184,3 +196,47 @@ async def cb_start(query: CallbackQuery, callback_data: LobbyStatusCallback):
 
     # TODO
     await gback.attempt_start_game(msg.chat.id, user=user)
+
+
+class GameMaster(object):
+    """Game master handler."""
+
+    def __init__(
+        self, parent: GlobalBackend, last_msg: Message, users: dict[UserID, User]
+    ) -> None:
+        # Stuff
+        self.parent = parent
+        self.last_msg = last_msg
+        self.users = dict(users)
+        #
+
+    @property
+    def chat(self) -> Chat:
+        return self.last_msg.chat
+
+    def generate_map(self, map_name: str) -> FSInputFile:
+        """Generate a map."""
+        mgh = MapGenHelper()
+        n_players = len(self.users)
+        _, my_img = mgh.gen_random_map(n_players=n_players, map_title=map_name)
+        tmpdir = tempfile.TemporaryDirectory().__enter__()  # yeah I know, sue me
+        Path(tmpdir).mkdir(exist_ok=True, parents=True)
+        file_name = f"{tmpdir}/{map_name}.jpg"
+        my_img.convert("RGB").save(file_name)
+        return FSInputFile(file_name)
+
+    async def start_game(self, leader: User) -> None:
+        """Start the game."""
+        N_MAPS = 3
+
+        map_pairs = [self.generate_map(f"map_{i+1}") for i in range(N_MAPS)]
+        map_grp = MediaGroupBuilder(caption="Map Options")
+        for fsif in map_pairs:
+            map_grp.add_photo(fsif)
+        await self.last_msg.answer_media_group(media=map_grp.build())
+        # poll_msg = await self.last_msg.answer_poll(
+        #     "Choose a map.", options=[f"Map {i+1}" for i in range(N_MAPS)]
+        # )
+        # poll_msg.poll
+
+        await self.last_msg.answer("This is where you choose the map etc. etc.")

@@ -45,7 +45,11 @@ class MapGenHelper(BaseModel):
         return layout
 
     def gen_random_map(
-        self, n_players: int, layout: TILayout | None = None, coord_anns: bool = True
+        self,
+        n_players: int,
+        layout: TILayout | None = None,
+        coord_anns: bool = True,
+        map_title: str | None = None,
     ) -> tuple[TIMaybeMap, Image]:
         """Generate a completely random map."""
         # Set the layout
@@ -65,7 +69,8 @@ class MapGenHelper(BaseModel):
 
         # Add annotations
         anns: list[TextMapAnnotation] = []
-        if coord_anns:  # Maybe coordinate annotations?
+        # Coordinate annotations?
+        if coord_anns:
             for cell in random_map.cells.keys():
                 anns.append(
                     TextMapAnnotation(
@@ -75,6 +80,17 @@ class MapGenHelper(BaseModel):
                         offset=(0, 200),
                     )
                 )
+        # Map Name?
+        if map_title is not None:
+            anns.append(
+                TextMapAnnotation(
+                    cell=(0, 0, 0),  # type: ignore
+                    text=map_title,
+                    font_size=120,
+                    offset=(0, -200),
+                )
+            )
+
         random_map.annotations = anns + random_map.annotations
 
         # Make image
