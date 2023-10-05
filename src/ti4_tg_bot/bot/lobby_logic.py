@@ -1,7 +1,9 @@
 """Logic for registering, entering and leaving lobbies."""
 
+import asyncio
 import tempfile
 from pathlib import Path
+
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
@@ -12,7 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.media_group import MediaGroupBuilder
 
 from ti4_tg_bot.map.gen_helper import MapGenHelper
-
+from ti4_tg_bot.map.ti4_map import TIMaybeMap
 
 cmds: dict[str, BotCommand] = {
     "start": BotCommand(command="start", description="Start using this bot."),
@@ -209,34 +211,49 @@ class GameMaster(object):
         self.last_msg = last_msg
         self.users = dict(users)
         #
+        self.mgh = MapGenHelper()
 
     @property
     def chat(self) -> Chat:
         return self.last_msg.chat
 
-    def generate_map(self, map_name: str) -> FSInputFile:
+    def generate_map(self, map_name: str) -> tuple[TIMaybeMap, FSInputFile]:
         """Generate a map."""
-        mgh = MapGenHelper()
         n_players = len(self.users)
-        _, my_img = mgh.gen_random_map(n_players=n_players, map_title=map_name)
+        my_map, my_img = self.mgh.gen_random_map(
+            n_players=n_players, map_title=map_name
+        )
         tmpdir = tempfile.TemporaryDirectory().__enter__()  # yeah I know, sue me
         Path(tmpdir).mkdir(exist_ok=True, parents=True)
         file_name = f"{tmpdir}/{map_name}.jpg"
         my_img.convert("RGB").save(file_name)
-        return FSInputFile(file_name)
+        return my_map, FSInputFile(file_name)
 
     async def start_game(self, leader: User) -> None:
         """Start the game."""
         N_MAPS = 3
+        POLL_ACTIVE_SEC = 60
 
+        await self.last_msg.answer("Generating map...")
         map_pairs = [self.generate_map(f"map_{i+1}") for i in range(N_MAPS)]
         map_grp = MediaGroupBuilder(caption="Map Options")
-        for fsif in map_pairs:
+        for mp, fsif in map_pairs:
             map_grp.add_photo(fsif)
         await self.last_msg.answer_media_group(media=map_grp.build())
-        # poll_msg = await self.last_msg.answer_poll(
-        #     "Choose a map.", options=[f"Map {i+1}" for i in range(N_MAPS)]
-        # )
-        # poll_msg.poll
+        poll_msg = await self.last_msg.answer_poll(
+            "Choose a map.",
+            options=[f"Map {i+1}" for i in range(N_MAPS)],
+            open_period=POLL_ACTIVE_SEC,
+            is_anonymous=False,
+        )
+        await asyncio.sleep(POLL_ACTIVE_SEC)
+        await poll_msg.answer("Let's pretend you chose the first one. ;)")
 
-        await self.last_msg.answer("This is where you choose the map etc. etc.")
+        chosen_map, chosen_map_img = map_pairs[0]
+        self.last_msg = await self.last_msg.answer_photo(
+            chosen_map_img, caption="You chose Map 1."
+        )
+        chosen_map
+
+    async def add_choice(self):
+        pass
