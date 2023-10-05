@@ -9,6 +9,8 @@ from .hexes import HexCoord
 from .ti4_map import TIMaybeMap, PlaceholderTile
 
 
+N_MIN_PLAYERS = 1  # FIXME at least 3 players
+
 CoordLike = HexCoord | tuple[int, int] | tuple[int, int, int]
 to_coord = TypeAdapter(HexCoord).validate_python
 
@@ -24,7 +26,7 @@ class TILayout(BaseModel):
     """Layout definition, with proper types."""
 
     name: str
-    players: Annotated[int, Field(ge=2)]
+    players: Annotated[int, Field(ge=N_MIN_PLAYERS)]
     fixed_tiles: dict[HexCoord, int] = {}
     home_tiles: list[HexCoord | CoordWithAnnotation]
     free_tiles: list[HexCoord]
@@ -81,7 +83,7 @@ class YamlTILayout(BaseModel):
     """
 
     name: str
-    players: Annotated[int, Field(ge=2)]
+    players: Annotated[int, Field(ge=N_MIN_PLAYERS)]
     fixed_tiles: list[_FixedTile] = []
     home_tiles: list[CoordLike | CoordWithAnnotation]
     free_tiles: list[CoordLike]
