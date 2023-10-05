@@ -5,9 +5,9 @@ fixed_tiles:
     at: [0, 0]
 home_tiles:
   - at: [-3, 0]
-    annot: "A"
+    name: "A"
   - at: [3, 0]
-    annot: "B"
+    name: "B"
 free_tiles: # generated as difference
   - [1, -3]
   - [2, -3]

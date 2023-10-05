@@ -48,7 +48,7 @@ class MapGenHelper(BaseModel):
         self,
         n_players: int,
         layout: TILayout | None = None,
-        coord_anns: bool = True,
+        coord_anns: bool = False,
         map_title: str | None = None,
     ) -> tuple[TIMaybeMap, Image]:
         """Generate a completely random map."""

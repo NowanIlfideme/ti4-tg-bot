@@ -15,7 +15,11 @@ from .images import HexImageField
 class PlaceholderTile(BaseModel):
     """Placeholder tile."""
 
-    is_home: bool = False
+    home_name: str | None = None
+
+    @property
+    def is_home(self) -> bool:
+        return self.home_name is not None
 
 
 MaybeTile = Tile | PlaceholderTile

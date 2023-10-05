@@ -16,8 +16,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.media_group import MediaGroupBuilder
 
 from ti4_tg_bot.data.models import Faction
+from ti4_tg_bot.map.annots import TextMapAnnotation
 from ti4_tg_bot.map.gen_helper import MapGenHelper
-from ti4_tg_bot.map.ti4_map import TIMaybeMap
+from ti4_tg_bot.map.ti4_map import TIMaybeMap, PlaceholderTile
 
 logger = logging.getLogger(__name__)
 
@@ -357,15 +358,43 @@ class GlobalBackend(object):
             del available_factions[sel_fac]
 
         # RESULTS
-        # TODO: Add to map?
+        home_coords = {
+            v.home_name: c
+            for c, v in chosen_map.cells.items()
+            if (isinstance(v, PlaceholderTile) and v.home_name is not None)
+        }
+        fac_to_tile = {tile.race: tile for tile in game.mgh.game_info.tiles.home_tiles}
+
         lines = ["Final Game Setup"]
         for i, user in enumerate(user_order):
             loc = game.locations[user.id]
             fac = game.factions[user.id]
+
+            home_coord = home_coords[loc]
+            home_tile = fac_to_tile[fac.name]
+            # Replce home tile and add annotation
+            chosen_map.cells[home_coord] = home_tile
+            chosen_map.annotations.append(  # TODO - consider replacing annotation?...
+                TextMapAnnotation(
+                    cell=home_coord,
+                    offset=(0, -120),
+                    text=user_att(user),
+                    font_size=80,
+                )
+            )
+            # Add info
             fac_o = f'<a href="{fac.wiki}">{fac.name}</a>'
             lines.append(f"{i+1}. {user_att(user)} at {loc} playing as <b>{fac_o}</b>")
         lines.append("Have fun! Use /start to create a new lobby, if necessary.")
-        await msg.answer("\n".join(lines))
+        # Save map file
+        tmpdir = tempfile.TemporaryDirectory().__enter__()  # yeah I know, sue me
+        Path(tmpdir).mkdir(exist_ok=True, parents=True)
+        file_name = f"{tmpdir}/{chat_id}.jpg"
+        chosen_map_img = chosen_map.to_image(game.mgh.path_imgs)
+        chosen_map_img.convert("RGB").save(file_name)
+        img = FSInputFile(file_name)
+        # Upload and add caption
+        await msg.answer_photo(photo=img, caption="\n".join(lines))
 
 
 gback = GlobalBackend()
