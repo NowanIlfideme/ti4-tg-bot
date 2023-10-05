@@ -17,7 +17,7 @@ class CoordWithAnnotation(BaseModel):
     """Coordinate with additional annotation."""
 
     at: HexCoord
-    more: str
+    annot: str
 
 
 class TILayout(BaseModel):
@@ -55,7 +55,7 @@ class TILayout(BaseModel):
                 ann = None
             else:
                 coord = coord_or_wann.at
-                ann = coord_or_wann.more
+                ann = coord_or_wann.annot
             cells[coord] = PlaceholderTile(is_home=True)
             if ann is not None:
                 annotations.append(TextMapAnnotation(cell=coord, text=ann))
