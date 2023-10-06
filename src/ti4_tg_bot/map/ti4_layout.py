@@ -9,6 +9,8 @@ from .hexes import HexCoord
 from .ti4_map import TIMaybeMap, PlaceholderTile
 
 
+N_MIN_PLAYERS = 1  # FIXME at least 3 players
+
 CoordLike = HexCoord | tuple[int, int] | tuple[int, int, int]
 to_coord = TypeAdapter(HexCoord).validate_python
 
@@ -17,16 +19,24 @@ class CoordWithAnnotation(BaseModel):
     """Coordinate with additional annotation."""
 
     at: HexCoord
-    more: str
+    name: str
+    annot: str | None = None
+
+    @property
+    def full_annotation(self) -> str:
+        """Full annotation, including name."""
+        if self.annot is None:
+            return self.name
+        return f"{self.name} {self.annot}"
 
 
 class TILayout(BaseModel):
     """Layout definition, with proper types."""
 
     name: str
-    players: Annotated[int, Field(ge=2)]
+    players: Annotated[int, Field(ge=N_MIN_PLAYERS)]
     fixed_tiles: dict[HexCoord, int] = {}
-    home_tiles: list[HexCoord | CoordWithAnnotation]
+    home_tiles: list[CoordWithAnnotation]
     free_tiles: list[HexCoord]
 
     @field_validator("home_tiles", mode="after")
@@ -47,18 +57,19 @@ class TILayout(BaseModel):
         num_to_tile = {x.number: x for x in game_info.tiles.all_tiles}
         # Set free tiles
         for coord in self.free_tiles:
-            cells[coord] = PlaceholderTile(is_home=False)
+            cells[coord] = PlaceholderTile()
         # Set home tiles
-        for coord_or_wann in self.home_tiles:
-            if isinstance(coord_or_wann, HexCoord):
-                coord = coord_or_wann
-                ann = None
-            else:
-                coord = coord_or_wann.at
-                ann = coord_or_wann.more
-            cells[coord] = PlaceholderTile(is_home=True)
-            if ann is not None:
-                annotations.append(TextMapAnnotation(cell=coord, text=ann))
+        for htile in self.home_tiles:
+            coord = htile.at
+            cells[coord] = PlaceholderTile(home_name=htile.name)
+            annotations.append(
+                TextMapAnnotation(
+                    cell=coord,
+                    text=htile.full_annotation,
+                    offset=(-150, 0),
+                    font_size=80,
+                )
+            )
         # Set fixed tiles
         for coord, tile_num in self.fixed_tiles.items():
             cells[coord] = num_to_tile[tile_num]
@@ -81,7 +92,7 @@ class YamlTILayout(BaseModel):
     """
 
     name: str
-    players: Annotated[int, Field(ge=2)]
+    players: Annotated[int, Field(ge=N_MIN_PLAYERS)]
     fixed_tiles: list[_FixedTile] = []
     home_tiles: list[CoordLike | CoordWithAnnotation]
     free_tiles: list[CoordLike]

@@ -1,21 +1,11 @@
-name: "Standard 6-player Map"
-players: 6
+name: "Testing 1-player Map"
+players: 1
 fixed_tiles:
   - number: 18 # Mecatol
     at: [0, 0]
 home_tiles:
   - at: [-3, 0]
     name: "A"
-  - at: [-3, 3]
-    name: "B"
-  - at: [0, 3]
-    name: "C"
-  - at: [3, 0]
-    name: "D"
-  - at: [3, -3]
-    name: "E"
-  - at: [0, -3]
-    name: "F"
 free_tiles: # generated as difference
   - [1, -3]
   - [2, -3]
