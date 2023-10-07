@@ -80,6 +80,13 @@ class TileSet(BaseModel):
         res = sorted(raw, key=lambda x: x.number)
         return res
 
+    def get_by_number(self, num: int) -> Tile:
+        """Get a tile by number."""
+        for tile in self.all_tiles:
+            if tile.number == num:
+                return tile
+        raise ValueError(f"No tile exists for number: {num}")
+
 
 class Faction(BaseModel):
     """Faction information."""

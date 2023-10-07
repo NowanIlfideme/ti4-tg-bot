@@ -1,6 +1,7 @@
 """Helper for generating things."""
 
 import logging
+import re
 from pathlib import Path
 from random import shuffle
 
@@ -11,13 +12,16 @@ from pydantic_yaml import parse_yaml_file_as
 from ti4_tg_bot.data import base_game
 from ti4_tg_bot.data.models import GameInfo
 from ti4_tg_bot.map.annots import TextMapAnnotation
+from ti4_tg_bot.map.hexes import HexCoord, get_spiral
 from ti4_tg_bot.map.ti4_layout import TILayout, YamlTILayout
-from ti4_tg_bot.map.ti4_map import TIMaybeMap
+from ti4_tg_bot.map.ti4_map import TIMaybeMap, PlaceholderTile
 
 logger = logging.getLogger(__name__)
 
 PATH_IMGS = Path(__file__).resolve().parents[3] / "data/tiles"
 PATH_LAYOUTS = Path(__file__).resolve().parents[3] / "data/layouts"
+
+MAP_STRING_REGEX = r"^\d{1,2}(?:\s\d{1,2}){35}$"
 
 
 class MapGenHelper(BaseModel):
@@ -43,6 +47,51 @@ class MapGenHelper(BaseModel):
         raw = parse_yaml_file_as(YamlTILayout, self.path_layouts / f"{name}.yaml")
         layout: TILayout = raw.fix_layout()
         return layout
+
+    def import_map(
+        self,
+        n_players: int,
+        map_string: str,
+        coord_anns: bool = False,
+        map_title: str | None = None,
+    ) -> tuple[TIMaybeMap, Image]:
+        """Import a map from the given map string."""
+        if not re.match(MAP_STRING_REGEX, map_string):
+            raise ValueError("Bad map string.")
+
+        # Get spiral coord
+        tile_nums = [18] + [int(x) for x in map_string.split()]
+        coord_to_num: dict[HexCoord, int] = {}
+        for coord, tn in zip(get_spiral(), tile_nums):
+            coord_to_num[coord] = tn
+
+        # Convert to
+        cells = {}
+        annots: list[TextMapAnnotation] = []
+        home_num = 0
+        home_tiles = ["A", "B", "C", "D", "E", "F"]
+        for coord, num in coord_to_num.items():
+            if num == 0:
+                home_name = home_tiles[home_num]
+                tile_i = PlaceholderTile(home_name=home_name)
+                home_num += 1
+                annots.append(
+                    TextMapAnnotation(
+                        cell=coord,
+                        text=home_name,
+                        offset=(-150, 0),
+                        font_size=80,
+                    )
+                )
+            else:
+                tile_i = self.game_info.tiles.get_by_number(num)
+            cells[coord] = tile_i
+
+        final_map = TIMaybeMap(cells=cells, annotations=annots)
+
+        # Make image
+        img = final_map.to_image(base_path=self.path_imgs)
+        return final_map, img
 
     def gen_random_map(
         self,

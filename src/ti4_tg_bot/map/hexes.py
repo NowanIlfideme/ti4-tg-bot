@@ -80,6 +80,14 @@ class HexCoord(RootModel[tuple[int, int, int]]):
         """Coordinate negation."""
         return HexCoord(root=(-self.q, -self.r, -self.s))
 
+    def __mul__(self, val: int) -> "HexCoord":
+        """Multiply vector by a given length."""
+        if not isinstance(val, int):
+            return NotImplemented
+        return HexCoord(root=(self.q * val, self.r * val, self.s * val))
+
+    # def __div__(self, val: int) -> "HexCoord"
+
     # Neighbors
 
     @property
@@ -108,6 +116,15 @@ class HexCoord(RootModel[tuple[int, int, int]]):
         https://www.redblobgames.com/grids/hexagons/#distances
         """
         return max(abs(self.q), abs(self.r), abs(self.s))
+
+    # Rotation
+    def rotate_counter_clockwise_60(self) -> "HexCoord":
+        """Rotate clockwise 1 step."""
+        return HexCoord(root=(-self.r, -self.s, -self.q))
+
+    def rotate_clockwise_60(self) -> "HexCoord":
+        """Rotate counter-clockwise 1 step."""
+        return HexCoord(root=(-self.s, -self.q, -self.r))
 
     #
 
@@ -139,6 +156,42 @@ HEX_UNIT_VECTORS = tuple(
     for _tup in [(1, 0, -1), (1, -1, 0), (0, -1, 1), (-1, 0, 1), (-1, 1, 0), (0, 1, -1)]
 )
 """Vector directions in 'cube' coordinates for hexes."""
+
+
+def _get_spiral_arm(
+    radius: int, *, base_vector: tuple[int, int, int] | HexCoord = (0, 1, -1)
+) -> list[HexCoord]:
+    if radius < 0:
+        raise ValueError("Radius must be nonnegative.")
+    if radius == 0:
+        return [HexCoord(root=(0, 0, 0))]
+
+    if not isinstance(base_vector, HexCoord):
+        base_vector = HexCoord(root=base_vector)
+    delta_vector = base_vector.rotate_clockwise_60().rotate_clockwise_60()
+    c_start = base_vector * radius
+    c_rot = c_start.rotate_clockwise_60()
+
+    curr = c_start
+    parts: list[HexCoord] = []
+    while curr != c_rot:
+        parts.append(curr)
+        curr = curr + delta_vector
+
+    # now rotate all parts
+    res: list[HexCoord] = []
+    for i in range(6):
+        res.extend(parts)
+        parts = [x.rotate_clockwise_60() for x in parts]
+    return res
+
+
+def get_spiral(radius: int = 3) -> list[HexCoord]:
+    """Get spiral of a particular radius."""
+    res = []
+    for r in range(0, radius + 1):
+        res.extend(_get_spiral_arm(r))
+    return res
 
 
 ObjType = TypeVar("ObjType")

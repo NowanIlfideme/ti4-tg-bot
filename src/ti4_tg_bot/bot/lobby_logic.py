@@ -7,6 +7,8 @@ from pathlib import Path
 from random import Random
 from datetime import datetime
 
+import re
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.filters.callback_data import CallbackData
@@ -36,6 +38,8 @@ r_lobby = Router()
 
 ChatID = int
 UserID = int
+
+MAP_STRING_REGEX = r"^\d{1,2}(?:\s\d{1,2}){35}$"
 
 
 def user_att(user: User) -> str:
@@ -123,7 +127,23 @@ class GameCurrState(object):
         tmpdir = tempfile.TemporaryDirectory().__enter__()  # yeah I know, sue me
         Path(tmpdir).mkdir(exist_ok=True, parents=True)
         file_name = f"{tmpdir}/{map_name}.jpg"
-        my_img.convert("RGB").save(file_name)
+        w, h = my_img.size
+        my_img.convert("RGB").resize((w // 2, h // 2)).save(file_name)
+        return my_map, FSInputFile(file_name)
+
+    def map_from_string(self, map_str: str) -> tuple[TIMaybeMap, FSInputFile]:
+        """Make a map from a map string."""
+        map_name = "imported_map"
+        n_players = len(self.users)
+        my_map, my_img = self.mgh.import_map(
+            n_players=n_players, map_string=map_str, map_title="Imported Map"
+        )
+
+        tmpdir = tempfile.TemporaryDirectory().__enter__()  # yeah I know, sue me
+        Path(tmpdir).mkdir(exist_ok=True, parents=True)
+        file_name = f"{tmpdir}/{map_name}.jpg"
+        w, h = my_img.size
+        my_img.convert("RGB").resize((w // 2, h // 2)).save(file_name)
         return my_map, FSInputFile(file_name)
 
     async def request_choice(
@@ -160,13 +180,34 @@ class GameCurrState(object):
         await req_msg.edit_text(f"{user.full_name}: {prompt}\nChosen: {res}")
         return res
 
+    async def request_map_string(
+        self,
+        user: UserID | User,
+        prompt: str,
+    ) -> str:
+        """Request a map string."""
+        if isinstance(user, User):
+            user_id = user.id
+        else:
+            user_id = user
+        if user_id not in self.users.keys():
+            raise ValueError("Bad user ID given.")
+        user = self.users[user_id]
+
+        qq = asyncio.Queue[str]()
+        self.queues[user_id] = qq
+
+        at_prompt = f"{user_att(user)}: {prompt}"
+        await self.last_msg.answer(at_prompt)
+        res = await qq.get()
+        return res
+
 
 FLOW_MSG = "\n".join(
     [
         "Please choose a game setup flow:",
         "A) Gen 3 maps, choose map, choose place, ban faction, pick faction.",
-        "No choice, it's the only one implemented..."
-        # "B) Ban faction, pick faction, gen 3 maps, choose map"
+        "B) Enter map string, choose map, choose place, ban faction, pick faction.",
     ]
 )
 
@@ -265,9 +306,11 @@ class GlobalBackend(object):
 
             # TEST choice
 
-            choice = await game.request_choice(user, FLOW_MSG, ["A"])
+            choice = await game.request_choice(user, FLOW_MSG, ["A", "B"])
             if choice == "A":
                 await self.game_flow_a(chat_id=chat_id, leader=user)
+            elif choice == "B":
+                await self.game_flow_b(chat_id=chat_id, leader=user)
 
             await msg.answer("Game setup is done, you may /start a new lobby.")
             del self.games[chat_id]
@@ -396,6 +439,113 @@ class GlobalBackend(object):
         # Upload and add caption
         await msg.answer_photo(photo=img, caption="\n".join(lines))
 
+    async def game_flow_b(self, chat_id: ChatID, leader: User):
+        """Game flow B."""
+        game = self.games[chat_id]
+        msg = game.last_msg
+
+        # Generate and choose map...
+        map_str = await game.request_map_string(
+            leader, prompt="Please enter a map string with `/mapstr 12 ... 34`"
+        )
+        chosen_map, chosen_map_img = game.map_from_string(map_str)
+        msg = await msg.answer_photo(chosen_map_img, caption="Playing on imported map.")
+
+        # Create random order
+        # Set seed and RNG
+        seed = int(datetime.utcnow().timestamp() * 1000)
+        rng = Random(seed)
+        logger.info(f"Using seed: {seed}")
+        # await msg.answer_dice()
+
+        # Create order
+        n_players = len(game.users)
+        user_order = rng.sample(list(game.users.values()), k=n_players)
+        await msg.answer(
+            "\n".join(
+                ["Player order:"]
+                + [f"{i+1}. {user_att(u)}" for i, u in enumerate(user_order)]
+            )
+        )
+
+        # CHOOSE location
+        possible_locations = list("ABCDEF")[:n_players]
+        await msg.answer(f"Selecting location in reverse order ({n_players} -> 1).")
+        for user in reversed(user_order):
+            sel_loc = await game.request_choice(
+                user,
+                "Choose your map location:",
+                choices=possible_locations,
+            )
+            game.locations[user.id] = sel_loc
+            possible_locations.remove(sel_loc)
+
+        available_factions = {fn.name: fn for fn in game.mgh.game_info.factions}
+
+        # BAN factions
+        await msg.answer(f"Banning factions in forward order (1 -> {n_players})")
+        for user in user_order:
+            ban_fac = await game.request_choice(
+                user,
+                "Choose a faction to ban:",
+                choices=list(available_factions),
+                max_width=2,
+            )
+            del available_factions[ban_fac]
+
+        # PICK factions
+        await msg.answer(f"Picking factions in reverse order ({n_players} -> 1)")
+        for user in user_order:
+            sel_fac = await game.request_choice(
+                user,
+                "Choose a faction to play:",
+                choices=list(available_factions),
+                max_width=2,
+            )
+            sel_fac_info = available_factions[sel_fac]
+            game.factions[user.id] = sel_fac_info
+            del available_factions[sel_fac]
+
+        # RESULTS
+        home_coords = {
+            v.home_name: c
+            for c, v in chosen_map.cells.items()
+            if (isinstance(v, PlaceholderTile) and v.home_name is not None)
+        }
+        fac_to_tile = {tile.race: tile for tile in game.mgh.game_info.tiles.home_tiles}
+
+        lines = ["Final Game Setup"]
+        for i, user in enumerate(user_order):
+            loc = game.locations[user.id]
+            fac = game.factions[user.id]
+
+            home_coord = home_coords[loc]
+            home_tile = fac_to_tile[fac.name]
+            # Replce home tile and add annotation
+            chosen_map.cells[home_coord] = home_tile
+            chosen_map.annotations.append(  # TODO - consider replacing annotation?...
+                TextMapAnnotation(
+                    cell=home_coord,
+                    offset=(0, -120),
+                    text=user_att(user),
+                    font_size=80,
+                )
+            )
+            # Add info
+            fac_o = f'<a href="{fac.wiki}">{fac.name}</a>'
+            lines.append(f"{i+1}. {user_att(user)} at {loc} playing as <b>{fac_o}</b>")
+        lines.append("Have fun! Use /start to create a new lobby, if necessary.")
+        # Save map file
+        tmpdir = tempfile.TemporaryDirectory().__enter__()  # yeah I know, sue me
+        Path(tmpdir).mkdir(exist_ok=True, parents=True)
+        file_name = f"{tmpdir}/{chat_id}.jpg"
+        chosen_map_img = chosen_map.to_image(game.mgh.path_imgs)
+        w, h = chosen_map_img.size
+        chosen_map_img.convert("RGB").resize((w // 2, h // 2)).save(file_name)
+        img = FSInputFile(file_name)
+        # Upload and add caption
+        await msg.answer_photo(photo=img, caption="\n".join(lines))
+
 
 gback = GlobalBackend()
 
@@ -403,6 +553,29 @@ gback = GlobalBackend()
 @r_lobby.message(Command(cmds["help"]))
 async def show_help(message: Message):
     """Show help."""
+    await message.answer("Use /start to start the game in this chat.")
+
+
+@r_lobby.message(Command("mapstr"))
+async def set_map_string(message: Message):
+    """Set map string."""
+    user = message.from_user
+    if user is None:
+        return
+    if message.text is None:
+        return
+    game = gback.games.get(message.chat.id)
+    if game is None:
+        return
+    qq = game.queues.get(user.id)
+    if qq is None:
+        return
+    map_str = message.text.lstrip("/mapstr ").strip()
+    if re.match(MAP_STRING_REGEX, map_str):
+        await message.answer("Map string accepted.")
+        await qq.put(map_str)
+    else:
+        await message.answer("Improper map string, ignoring.")
 
 
 @r_lobby.message(CommandStart())
