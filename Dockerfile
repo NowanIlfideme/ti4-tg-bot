@@ -1,6 +1,6 @@
 FROM condaforge/mambaforge:latest
 
-# sudo apt install cmake clang binutils-dev
+RUN apt-get update -y && apt-get install build-essential g++ gcc gcc-arm-linux-gnueabi -y
 
 RUN mkdir /ti4-tg-bot
 COPY . /ti4-tg-bot
