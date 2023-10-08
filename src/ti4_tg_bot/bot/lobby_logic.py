@@ -495,7 +495,7 @@ class GlobalBackend(object):
 
         # PICK factions
         await msg.answer(f"Picking factions in reverse order ({n_players} -> 1)")
-        for user in user_order:
+        for user in reversed(user_order):
             sel_fac = await game.request_choice(
                 user,
                 "Choose a faction to play:",
