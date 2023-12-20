@@ -87,6 +87,13 @@ class TileSet(BaseModel):
                 return tile
         raise ValueError(f"No tile exists for number: {num}")
 
+    def __getitem__(self, val: int) -> Tile:
+        """Get a tile by number (dict style)."""
+        try:
+            return self.get_by_number(val)
+        except ValueError as ve:
+            raise KeyError(val) from ve
+
 
 class Faction(BaseModel):
     """Faction information."""
