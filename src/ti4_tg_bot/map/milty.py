@@ -35,6 +35,14 @@ class ApproxValue(BaseModel):
             misc=self.misc + av.misc,
         )
 
+    @property
+    def human_description(self) -> str:
+        """Human-readable description of the approximate value."""
+        return (
+            f"{self.total:5.2f} ({self.resources:5.2f} R + "
+            f"{self.influence:5.2f} I + {self.misc:5.2f} E)"
+        )
+
 
 SkipValues = dict[TechSpecialty, float]
 DEFAULT_SKIP_VALUES: SkipValues = {
@@ -188,7 +196,7 @@ class MiltyDraftState(BaseModel):
         return cls(slices=slices, mecatol=tileset.mecatol), rng
 
     def to_map(self) -> TIMaybeMap:
-        """Create a map from the draft state."""
+        """Create a map from the draft state. Might fail/warn..."""
         N = self.n_players
         if len(self.player_order) != N:
             warnings.warn("Player order is not fully set.")
@@ -200,6 +208,14 @@ class MiltyDraftState(BaseModel):
         cells = {}
         annots: list[TextMapAnnotation] = []
 
+        # Pre-set homes as placeholders
+        for z in range(N):
+            place_coord = HexCoord(root=(0, -3, 3))
+            for _ in range(z):
+                place_coord = place_coord.rotate_clockwise_60()
+            cells[place_coord] = PlaceholderTile()
+
+        # Place the slices
         for i in range(N):
             try:
                 name_i = self.player_names.get(i, f"player_{i}")
@@ -212,14 +228,26 @@ class MiltyDraftState(BaseModel):
 
                 cells.update(slice_i.to_tile_dict(rotations=order_i))
 
-                # Add
-                name_coord = HexCoord(root=(0, -3, 3))
+                # Add player labels
+                place_coord = HexCoord(root=(0, -3, 3))
                 for _ in range(order_i):
-                    name_coord = name_coord.rotate_clockwise_60()
-                annots.append(TextMapAnnotation(cell=name_coord, text=name_i))
+                    place_coord = place_coord.rotate_clockwise_60()
+
+                av = slice_i.evaluate_slice()
+                res_vals_i = av.human_description
+                annots += [
+                    TextMapAnnotation(cell=place_coord, text=name_i),
+                    TextMapAnnotation(
+                        cell=place_coord,
+                        text=res_vals_i,
+                        offset=(0, 80),
+                        font_size=40,
+                    ),
+                ]
             except Exception as exc:
-                warnings.warn(f"Failed to set player {i}:\n{exc}")
-                # raise
+                warnings.warn(f"Failed to set player {i}:\n{exc!r}")
+                # raise  # should we do that?...
+
         # Add mecatol
         cells[HexCoord(root=(0, 0, 0))] = self.mecatol.model_copy(deep=True)
 
@@ -231,8 +259,15 @@ class MiltyDraftState(BaseModel):
         for i, slice in enumerate(self.slices):
             cells_i = slice.to_tile_dict()
             cells_i[HexCoord(root=(0, 0, 0))] = self.mecatol
+            xc = HexCoord(root=(0, -3, 3))
             annot_i = [
-                TextMapAnnotation(cell=HexCoord(root=(0, -3, 3)), text=f"Slice {i}")
+                TextMapAnnotation(cell=xc, text=f"Slice {i}"),
+                TextMapAnnotation(
+                    cell=xc,
+                    text=slice.evaluate_slice().human_description,
+                    offset=(0, 80),
+                    font_size=40,
+                ),
             ]
             part_i = TIMaybeMap(cells=cells_i, annotations=annot_i)
             res.append(part_i.to_image(base_path))
