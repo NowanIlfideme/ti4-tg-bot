@@ -5,7 +5,7 @@ import warnings
 from collections import Counter
 from pathlib import Path
 from random import Random
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from PIL.Image import Image
 from pydantic import (
@@ -13,7 +13,6 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
-    model_validator,
     FieldValidationInfo,
 )
 from pydantic_core import ValidationError
@@ -29,41 +28,48 @@ logger = logging.getLogger(__name__)
 class ApproxValue(BaseModel):
     """Approximate value of a planet/tile/slice."""
 
-    resources: float = 0
-    influence: float = 0
+    eff_resources: float = 0
+    eff_influence: float = 0
     misc: float = 0
+
+    strict_resources: int = 0
+    strict_influence: int = 0
 
     @property
     def total(self) -> float:
         """Total value."""
-        return self.resources + self.influence + self.misc
+        return self.eff_resources + self.eff_influence + self.misc
 
     def __add__(self, av: "ApproxValue") -> "ApproxValue":
         """Add values."""
         if not isinstance(av, ApproxValue):
             return NotImplemented
         return ApproxValue(
-            resources=self.resources + av.resources,
-            influence=self.influence + av.influence,
+            eff_resources=self.eff_resources + av.eff_resources,
+            eff_influence=self.eff_influence + av.eff_influence,
             misc=self.misc + av.misc,
+            strict_resources=self.strict_resources + av.strict_resources,
+            strict_influence=self.strict_influence + av.strict_influence,
         )
 
     @property
     def human_description(self) -> str:
         """Human-readable description of the approximate value."""
         return (
-            f"{self.total:5.2f} ({self.resources:5.2f} R + "
-            f"{self.influence:5.2f} I + {self.misc:5.2f} E)"
+            f"{self.total:.2f} = "
+            f"{self.eff_resources:.2f} ({self.strict_resources}) R + "
+            f"{self.eff_influence:.2f} ({self.strict_influence}) I + "
+            f"{self.misc:.2f} E)"
         )
 
 
 SkipValues = dict[TechSpecialty, float]
 DEFAULT_SKIP_VALUES: SkipValues = {
     TechSpecialty.NO_TECH: 0,
-    TechSpecialty.BLUE: 0.25,
-    TechSpecialty.GREEN: 0.2,
-    TechSpecialty.YELLOW: 0.15,
     TechSpecialty.RED: 0.1,
+    TechSpecialty.YELLOW: 0.15,
+    TechSpecialty.GREEN: 0.2,
+    TechSpecialty.BLUE: 0.25,
 }
 
 
@@ -71,12 +77,16 @@ def evaluate_tile(
     tile: Tile, *, skip_values: SkipValues = DEFAULT_SKIP_VALUES
 ) -> ApproxValue:
     """Get the 'optimal' use value of planets in the tile."""
+    s_res = 0
+    s_inf = 0
     v_res = 0.0
     v_inf = 0.0
     v_misc = 0.0
     for planet in tile.planets:
         # Resources and influence
         ri, ii = planet.resources, planet.influence
+        s_res += ri
+        s_inf += ii
         if ri > ii:
             v_res += ri
         elif ri < ii:
@@ -86,7 +96,13 @@ def evaluate_tile(
             v_inf += ii / 2
         # Misc calculation
         v_misc += skip_values.get(planet.tech, 0.0)
-    return ApproxValue(resources=v_res, influence=v_inf, misc=v_misc)
+    return ApproxValue(
+        eff_resources=v_res,
+        eff_influence=v_inf,
+        misc=v_misc,
+        strict_resources=s_res,
+        strict_influence=s_inf,
+    )
 
 
 class MiltyMapSlice(BaseModel):
@@ -168,11 +184,13 @@ class MiltyMapSlice(BaseModel):
             res = {hc.rotate_clockwise_60(): t for (hc, t) in res.items()}
         return res
 
-    def evaluate_slice(self) -> ApproxValue:
+    def evaluate_slice(
+        self, skip_values: SkipValues = DEFAULT_SKIP_VALUES
+    ) -> ApproxValue:
         """Evaluate constituent tiles."""
         res = ApproxValue()
         for tile in self.tiles:
-            res = res + evaluate_tile(tile)
+            res = res + evaluate_tile(tile, skip_values=skip_values)
         return res
 
 
@@ -369,51 +387,125 @@ class MiltyDraftState(BaseModel):
         return res
 
 
+QtyName = Literal[
+    "total", "resources", "strict_resources", "influence", "strict_influence"
+]
+# HACK: Yeah this is ugly but maybe refactor later lol
+
+
+def get_tile_quantity(
+    t: Tile, q_name: QtyName, skip_values: SkipValues = DEFAULT_SKIP_VALUES
+) -> float:
+    """Get quantity for a tile given by the q_name."""
+    match q_name:
+        case "total":
+            return evaluate_tile(t, skip_values=skip_values).total
+        case "resources":
+            return evaluate_tile(t, skip_values=skip_values).eff_resources
+        case "influence":
+            return evaluate_tile(t, skip_values=skip_values).eff_influence
+        case "strict_resources":
+            return evaluate_tile(t, skip_values=skip_values).strict_resources
+        case "strict_influence":
+            return evaluate_tile(t, skip_values=skip_values).strict_influence
+        case _:
+            raise ValueError("Unknown quantity.")
+
+
+def get_slice_quantity(
+    s: MiltyMapSlice, q_name: QtyName, skip_values: SkipValues = DEFAULT_SKIP_VALUES
+) -> float:
+    """Get quantity for a slice given by the q_name."""
+    match q_name:
+        case "total":
+            return s.evaluate_slice(skip_values=skip_values).total
+        case "resources":
+            return s.evaluate_slice(skip_values=skip_values).eff_resources
+        case "influence":
+            return s.evaluate_slice(skip_values=skip_values).eff_influence
+        case "strict_resources":
+            return s.evaluate_slice(skip_values=skip_values).strict_resources
+        case "strict_influence":
+            return s.evaluate_slice(skip_values=skip_values).strict_influence
+        case _:
+            raise ValueError("Unknown quantity.")
+
+
 class SliceRebalancer(BaseModel):
     """Utility class for rebalancing slices."""
 
-    min_value: float | None = 9
-    max_value: float | None = 14
-    min_resources: float | None = None  # FIXME: Doesn't work yet
-    min_influence: float | None = None  # FIXME: Doesn't work yet
-    diff_threshold: float = 3
+    min_value: float = 9
+    min_eff_resources: float | None = None  # FIXME: Doesn't work yet
+    min_eff_influence: float | None = None  # FIXME: Doesn't work yet
+    min_strict_resources: float | None = None  # FIXME: Doesn't work yet
+    min_strict_influence: float | None = None  # FIXME: Doesn't work yet
+    diff_threshold: float = 1.5
 
-    def _c_min_value(self, x: float) -> bool:
-        """Check min value."""
-        if self.min_value is None:
-            return True
-        return x >= self.min_value
+    skip_values: SkipValues = DEFAULT_SKIP_VALUES
 
-    def _c_max_value(self, x: float) -> bool:
-        """Check max value."""
-        if self.max_value is None:
-            return True
-        return x <= self.max_value
+    def _swap_random_blue_tiles(
+        self,
+        smaller: MiltyMapSlice,
+        larger: MiltyMapSlice,
+        qty_name: QtyName,
+        rng: Random,
+    ):
+        """Swap random blue tiles between two slices, favorably for the quantity."""
+        while True:
+            # Select random tiles
+            t_small = rng.choice(smaller.tiles)
+            t_large = rng.choice(larger.tiles)
+            # Skip red tiles (with 0 planets)... HACK: might not work for PoK
+            if (len(t_small.planets) == 0) or (len(t_large.planets) == 0):
+                continue
+            # If they improve the metrics - swap them
+            t_v_min = get_tile_quantity(t_small, qty_name)
+            t_v_max = get_tile_quantity(t_large, qty_name)
+            if t_v_min < t_v_max:
+                logger.info("Swapping tiles...")
+                # swap the tiles, then we will check again
+                smaller.swap_tile(t_small, t_large)
+                larger.swap_tile(t_large, t_small)
+                break
 
-    def _c_min_resources(self, x: float) -> bool:
-        """Check min resources."""
-        if self.min_resources is None:
-            return True
-        return x >= self.min_resources
+    def _random_step(self, slices: list[MiltyMapSlice], rng: Random) -> bool:
+        """Take a step towards fixing a random quantity.
 
-    def _c_min_influence(self, x: float) -> bool:
-        """Check min influence."""
-        if self.min_influence is None:
-            return True
-        return x > self.min_influence
-
-    def check_slices(self, slices: list[MiltyMapSlice]) -> bool:
-        """Check whether slices are OK."""
-        for i, slice in enumerate(slices):
-            av = slice.evaluate_slice()
-            if not (
-                self._c_min_value(av.total)
-                and self._c_max_value(av.total)
-                and self._c_min_resources(av.resources)  # or actual resources?
-                and self._c_min_influence(av.influence)  # or actual influence?
-            ):
-                return False
-        return True
+        Returns True if something has changed.
+        """
+        thresh_map_raw: dict[QtyName, float | None] = {
+            "total": self.min_value,
+            "resources": self.min_eff_resources,
+            "influence": self.min_eff_influence,
+            "strict_resources": self.min_strict_resources,
+            "strict_influence": self.min_strict_influence,
+        }
+        thresh_map: dict[QtyName, float] = {
+            k: v for k, v in thresh_map_raw.items() if v is not None
+        }
+        to_fix: list[QtyName] = list(thresh_map)
+        rng.shuffle(to_fix)
+        for qty_name in to_fix:
+            qty_name: QtyName = cast(QtyName, qty_name)
+            sl_order = sorted(
+                slices,
+                key=lambda x: get_slice_quantity(
+                    x, qty_name, skip_values=self.skip_values
+                ),
+            )
+            threshold = thresh_map[qty_name]
+            min_qty = get_slice_quantity(
+                sl_order[0], qty_name, skip_values=self.skip_values
+            )
+            if min_qty < threshold:
+                self._swap_random_blue_tiles(
+                    smaller=sl_order[0],
+                    larger=sl_order[-1],
+                    qty_name=qty_name,
+                    rng=rng,
+                )
+                return True  # we changed something
+        return False
 
     def rebalance(
         self,
@@ -433,48 +525,18 @@ class SliceRebalancer(BaseModel):
 
         # Make copy to avoid changing original data
         slices = [slc.model_copy(deep=True) for slc in original.slices]
+
+        # Run steps
         for i_try in range(max_tries):
-            if self.check_slices(slices):
-                # We're good
-                break
-            logger.warning(f"Try {i_try}")
-
-            # Try to fix totals
-            totals = [s.evaluate_slice().total for s in slices]
-            min_total, max_total = min(totals), max(totals)
-            diff_total = max_total - min_total
-            if diff_total > self.diff_threshold:
-                # rebalance
-                i_ss_min = totals.index(min_total)
-                i_ss_max = totals.index(max_total)
-                slc_min = slices[i_ss_min]
-                slc_max = slices[i_ss_max]
-                logger.warning(
-                    f"Balancing {i_ss_min} ({min_total}) vs {i_ss_max} ({max_total})."
-                )
-                while True:
-                    # select random tiles
-                    _t_i_min = rng.randint(0, len(slc_min.tiles) - 1)
-                    t_min = slc_min.tiles[_t_i_min]
-                    _t_i_max = rng.randint(0, len(slc_max.tiles) - 1)
-                    t_max = slc_max.tiles[_t_i_max]
-                    # NOTE: make sure these tiles have nonzero values, LOL
-                    t_v_min = evaluate_tile(t_min).total
-                    t_v_max = evaluate_tile(t_max).total
-                    if (t_v_min < 1) or (t_v_max < 1):
-                        continue  # skip these tiles...
-                    elif t_v_min < t_v_max:
-                        logger.warning("Swapping tiles...")
-                        # swap the tiles, then we will check again
-                        slices[i_ss_min].swap_tile(t_min, t_max)
-                        slices[i_ss_max].swap_tile(t_max, t_min)
-                        break
-            else:
-                raise NotImplementedError("Misbalance still to be fixed.")
-
+            logger.info(f"Rebalancing - step {i_try}")
+            smth_changed = self._random_step(slices, rng)
+            if not smth_changed:
+                break  # nothing changed - we are stuck in our solution
         else:
             raise RuntimeError(f"Couldn't rebalance within {max_tries} tries.")
 
+        # We're done before max_tries is reached
+        logger.warning(f"Rebalancing took {i_try + 1} steps.")
         return MiltyDraftState(slices=slices, mecatol=original.mecatol)
 
     def make_generation(
@@ -485,7 +547,7 @@ class SliceRebalancer(BaseModel):
         n_slices: Literal[6] = 6,  # only 6 slices supported for now
         n_reds: Literal[2] = 2,  # 2 blue tiles
         n_blues: Literal[3] = 3,  # 3 blue tiles
-        retries_global: int = 1,
+        retries_global: int = 5,
         retries_gen: int = 5,
         retries_rebalance: int = 10,
     ) -> MiltyDraftState:
