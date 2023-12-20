@@ -1,7 +1,6 @@
 """Milty draft approximation."""
 
 import logging
-import warnings
 from collections import Counter
 from pathlib import Path
 from random import Random
@@ -17,7 +16,7 @@ from pydantic import (
 )
 from pydantic_core import ValidationError
 
-from ti4_tg_bot.data.models import Tile, TechSpecialty, TileSet, Wormhole
+from ti4_tg_bot.data.models import Faction, Tile, TechSpecialty, TileSet, Wormhole
 from ti4_tg_bot.map.hexes import HexCoord
 from ti4_tg_bot.map.ti4_map import TIMaybeMap, PlaceholderTile, TextMapAnnotation
 
@@ -201,17 +200,48 @@ class MiltyDraftState(BaseModel):
 
     n_players: Literal[6] = 6
     slices: Annotated[list[MiltyMapSlice], Field(min_length=6, max_length=6)]  # for now
+    factions: list[Faction] = []
+    faction_homes: list[Tile] = []
+    mecatol: Tile  # just needed for display, yes it's hacky
+
+    # Player choices
     player_names: dict[int, str] = {}
     player_order: dict[int, int] = {}
     player_slices: dict[int, int] = {}
-    player_homes: dict[int, Tile] = {}
+    player_factions: dict[int, int] = {}
+
     # Other things needed
-    mecatol: Tile
+
+    @property
+    def player_homes(self) -> dict[int, Tile]:
+        """Create player homes from factions."""
+        return {k: self.faction_homes[v] for k, v in self.player_factions.items()}
+
+    @property
+    def available_seats(self) -> list[int]:
+        """Available seats (speaker order)."""
+        return [x for x in range(self.n_players) if x not in self.player_order.values()]
+
+    @property
+    def available_factions(self) -> list[tuple[int, Faction, Tile]]:
+        """Available factions (number, faction info, tile)."""
+        indices = [
+            x for x in range(self.n_players) if x not in self.player_factions.values()
+        ]
+        return [(i, self.factions[i], self.faction_homes[i]) for i in indices]
+
+    @property
+    def available_slices(self) -> list[tuple[int, MiltyMapSlice]]:
+        """Available slices."""
+        indices = [
+            x for x in range(self.n_players) if x not in self.player_slices.values()
+        ]
+        return [(i, self.slices[i]) for i in indices]
 
     # Validators
 
     @field_validator(
-        "player_names", "player_order", "player_slices", "player_homes", mode="after"
+        "player_names", "player_order", "player_slices", "player_factions", mode="after"
     )
     @classmethod
     def _chk_player_idx(
@@ -291,7 +321,7 @@ class MiltyDraftState(BaseModel):
             res = cls(slices=slices, mecatol=tileset.mecatol)
         except ValidationError:
             # Retry again, starting with current retry level
-            warnings.warn(f"Failed with seed {seed}, trying with new {rng}")
+            logger.warn(f"Failed, trying again ({retries} retries left).")
             try:
                 res, rng = cls.make_random(
                     tileset=tileset,
@@ -312,11 +342,11 @@ class MiltyDraftState(BaseModel):
         """Create a map from the draft state. Might fail/warn..."""
         N = self.n_players
         if len(self.player_order) != N:
-            warnings.warn("Player order is not fully set.")
+            logger.warn("Player order is not fully set.")
         if len(self.player_slices) != N:
-            warnings.warn("Player slices are not fully set.")
+            logger.warn("Player slices are not fully set.")
         if len(self.player_homes) != N:
-            warnings.warn("Player homes are not fully set.")
+            logger.warn("Player homes are not fully set.")
 
         cells = {}
         annots: list[TextMapAnnotation] = []
@@ -358,7 +388,7 @@ class MiltyDraftState(BaseModel):
                     ),
                 ]
             except Exception as exc:
-                warnings.warn(f"Failed to set player {i}:\n{exc!r}")
+                logger.warn(f"Failed to set player {i}: {exc!r}")
                 # raise  # should we do that?...
 
         # Add mecatol
@@ -366,10 +396,15 @@ class MiltyDraftState(BaseModel):
 
         return TIMaybeMap(cells=cells, annotations=annots)
 
-    def visualize_slices(self, base_path: Path) -> list[Image]:
+    def visualize_slices(
+        self, base_path: Path, only_available: bool = False
+    ) -> list[Image]:
         """Visualize slices."""
         res: list[Image] = []
         for i, slice in enumerate(self.slices):
+            if only_available and i in [x[0] for x in self.available_slices]:
+                # skip unavailable slices (if option is on)
+                continue
             cells_i = slice.to_tile_dict()
             cells_i[HexCoord(root=(0, 0, 0))] = self.mecatol
             xc = HexCoord(root=(0, -3, 3))
@@ -384,6 +419,31 @@ class MiltyDraftState(BaseModel):
             ]
             part_i = TIMaybeMap(cells=cells_i, annotations=annot_i)
             res.append(part_i.to_image(base_path))
+        return res
+
+    def visualize_factions(
+        self, base_path: Path, only_available: bool = True
+    ) -> list[Image]:
+        res: list[Image] = []
+        if only_available:
+            fac_tuples = self.available_factions
+        else:
+            fac_tuples = list(
+                zip(range(len(self.factions)), self.factions, self.faction_homes)
+            )
+        for i, fac, home in fac_tuples:
+            mmap = TIMaybeMap(
+                cells={(0, 0, 0): home},  # type: ignore
+                annotations=[
+                    TextMapAnnotation(
+                        cell=(0, 0, 0),  # type: ignore
+                        offset=(0, 250),
+                        text=fac.name,
+                        font_size=50,
+                    )
+                ],
+            )
+            res.append(mmap.to_image(base_path))
         return res
 
 

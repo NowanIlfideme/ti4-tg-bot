@@ -80,6 +80,13 @@ class TileSet(BaseModel):
         res = sorted(raw, key=lambda x: x.number)
         return res
 
+    def get_faction_home(self, faction_name: str) -> Tile:
+        """Get the home tile for some faction."""
+        found = [ht for ht in self.home_tiles if ht.race == faction_name]
+        if len(found) != 1:
+            raise ValueError(f"Unknown or ambigious faction name: {faction_name}")
+        return found[0]
+
     def get_by_number(self, num: int) -> Tile:
         """Get a tile by number."""
         for tile in self.all_tiles:
