@@ -1,5 +1,6 @@
 """Milty draft approximation."""
 
+import logging
 import warnings
 from collections import Counter
 from pathlib import Path
@@ -20,6 +21,9 @@ from pydantic_core import ValidationError
 from ti4_tg_bot.data.models import Tile, TechSpecialty, TileSet, Wormhole
 from ti4_tg_bot.map.hexes import HexCoord
 from ti4_tg_bot.map.ti4_map import TIMaybeMap, PlaceholderTile, TextMapAnnotation
+
+
+logger = logging.getLogger(__name__)
 
 
 class ApproxValue(BaseModel):
@@ -125,6 +129,25 @@ class MiltyMapSlice(BaseModel):
             self.far_mid,
         ]
 
+    @tiles.setter
+    def tiles(self, vals: list[Tile]):
+        """Set tiles."""
+        (
+            self.close_left,
+            self.close_mid,
+            self.close_right,
+            self.far_left,
+            self.far_mid,
+        ) = vals
+
+    def swap_tile(self, original: Tile, updated: Tile) -> None:
+        """Swap the original tile for a new one."""
+        if original not in self.tiles:
+            raise ValueError(f"No original tile exists in tiles: {self.tiles}")
+        ttt = list(self.tiles)
+        ttt[ttt.index(original)] = updated
+        self.tiles = ttt
+
     def to_tile_dict(
         self, rotations: int = 0
     ) -> dict[HexCoord, Tile | PlaceholderTile]:
@@ -197,6 +220,12 @@ class MiltyDraftState(BaseModel):
                     continue
                 if wormholes[wht] > 1:
                     raise ValueError(f"Too many {wht.name} wormholes in slice {i}")
+
+            # Ensure that anomalies aren't next to each other
+            # TODO: Implement.
+            # FIXME: This might lead to way too many rejections - fix in generation?
+
+        # TODO: Optionally (via flag) ensure that all wormhole tiles are placed
         return v
 
     # Methods
@@ -239,10 +268,12 @@ class MiltyDraftState(BaseModel):
             slices.append(MiltyMapSlice.from_list(raw_i))
 
         # Create slice collection
-        # NOTE: Might fail entirely - we will just regenerate, if we have retries
+        # NOTE: Might be rejected - we will just try regenerating
         try:
             res = cls(slices=slices, mecatol=tileset.mecatol)
         except ValidationError:
+            # Retry again, starting with current retry level
+            warnings.warn(f"Failed with seed {seed}, trying with new {rng}")
             try:
                 res, rng = cls.make_random(
                     tileset=tileset,
@@ -336,3 +367,159 @@ class MiltyDraftState(BaseModel):
             part_i = TIMaybeMap(cells=cells_i, annotations=annot_i)
             res.append(part_i.to_image(base_path))
         return res
+
+
+class SliceRebalancer(BaseModel):
+    """Utility class for rebalancing slices."""
+
+    min_value: float | None = 9
+    max_value: float | None = 14
+    min_resources: float | None = None  # FIXME: Doesn't work yet
+    min_influence: float | None = None  # FIXME: Doesn't work yet
+    diff_threshold: float = 3
+
+    def _c_min_value(self, x: float) -> bool:
+        """Check min value."""
+        if self.min_value is None:
+            return True
+        return x >= self.min_value
+
+    def _c_max_value(self, x: float) -> bool:
+        """Check max value."""
+        if self.max_value is None:
+            return True
+        return x <= self.max_value
+
+    def _c_min_resources(self, x: float) -> bool:
+        """Check min resources."""
+        if self.min_resources is None:
+            return True
+        return x >= self.min_resources
+
+    def _c_min_influence(self, x: float) -> bool:
+        """Check min influence."""
+        if self.min_influence is None:
+            return True
+        return x > self.min_influence
+
+    def check_slices(self, slices: list[MiltyMapSlice]) -> bool:
+        """Check whether slices are OK."""
+        for i, slice in enumerate(slices):
+            av = slice.evaluate_slice()
+            if not (
+                self._c_min_value(av.total)
+                and self._c_max_value(av.total)
+                and self._c_min_resources(av.resources)  # or actual resources?
+                and self._c_min_influence(av.influence)  # or actual influence?
+            ):
+                return False
+        return True
+
+    def rebalance(
+        self,
+        original: MiltyDraftState,
+        *,
+        seed: Random | int | None = None,
+        max_tries: int = 10,
+    ) -> MiltyDraftState:
+        """Try rebalancing the map."""
+        # Set up stochastics
+        if isinstance(seed, Random):
+            # clone
+            rng = Random()
+            rng.setstate(seed.getstate())
+        else:
+            rng = Random(seed)
+
+        # Make copy to avoid changing original data
+        slices = [slc.model_copy(deep=True) for slc in original.slices]
+        for i_try in range(max_tries):
+            if self.check_slices(slices):
+                # We're good
+                break
+            logger.warning(f"Try {i_try}")
+
+            # Try to fix totals
+            totals = [s.evaluate_slice().total for s in slices]
+            min_total, max_total = min(totals), max(totals)
+            diff_total = max_total - min_total
+            if diff_total > self.diff_threshold:
+                # rebalance
+                i_ss_min = totals.index(min_total)
+                i_ss_max = totals.index(max_total)
+                slc_min = slices[i_ss_min]
+                slc_max = slices[i_ss_max]
+                logger.warning(
+                    f"Balancing {i_ss_min} ({min_total}) vs {i_ss_max} ({max_total})."
+                )
+                while True:
+                    # select random tiles
+                    _t_i_min = rng.randint(0, len(slc_min.tiles) - 1)
+                    t_min = slc_min.tiles[_t_i_min]
+                    _t_i_max = rng.randint(0, len(slc_max.tiles) - 1)
+                    t_max = slc_max.tiles[_t_i_max]
+                    # NOTE: make sure these tiles have nonzero values, LOL
+                    t_v_min = evaluate_tile(t_min).total
+                    t_v_max = evaluate_tile(t_max).total
+                    if (t_v_min < 1) or (t_v_max < 1):
+                        continue  # skip these tiles...
+                    elif t_v_min < t_v_max:
+                        logger.warning("Swapping tiles...")
+                        # swap the tiles, then we will check again
+                        slices[i_ss_min].swap_tile(t_min, t_max)
+                        slices[i_ss_max].swap_tile(t_max, t_min)
+                        break
+            else:
+                raise NotImplementedError("Misbalance still to be fixed.")
+
+        else:
+            raise RuntimeError(f"Couldn't rebalance within {max_tries} tries.")
+
+        return MiltyDraftState(slices=slices, mecatol=original.mecatol)
+
+    def make_generation(
+        self,
+        tileset: TileSet,
+        *,
+        seed: Random | int | None = None,
+        n_slices: Literal[6] = 6,  # only 6 slices supported for now
+        n_reds: Literal[2] = 2,  # 2 blue tiles
+        n_blues: Literal[3] = 3,  # 3 blue tiles
+        retries_global: int = 1,
+        retries_gen: int = 5,
+        retries_rebalance: int = 10,
+    ) -> MiltyDraftState:
+        """Generate a full draft set."""
+        # Convert the seed to rng state
+        if isinstance(seed, Random):
+            # clone
+            rng = Random()
+            rng.setstate(seed.getstate())
+        else:
+            rng = Random(seed)
+
+        # Generate
+        for i_try_global in range(retries_global):
+            try:
+                raw_draft, rng = MiltyDraftState.make_random(
+                    tileset=tileset,
+                    seed=rng,
+                    n_slices=n_slices,
+                    n_reds=n_reds,
+                    n_blues=n_blues,
+                    retries=retries_gen,
+                )
+                # FIXME: is no state returned from here? We reuse the rng seeds...
+                fixed_draft = self.rebalance(
+                    raw_draft, seed=rng, max_tries=retries_rebalance
+                )
+                break
+            except Exception:
+                logger.exception(f"Failure in try {i_try_global}")
+        else:
+            raise RuntimeError(
+                "Could not generate a draft set with retry settings: "
+                f"{retries_global} global, {retries_gen} gen, "
+                f"{retries_rebalance} rebalance."
+            )
+        return fixed_draft
