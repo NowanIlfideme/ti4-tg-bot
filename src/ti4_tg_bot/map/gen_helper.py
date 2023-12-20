@@ -229,8 +229,8 @@ class MapGenHelper(BaseModel):
                 TextMapAnnotation(
                     cell=seat_coord,
                     text=f"Seat {seat_i}",
-                    font_size=80,
-                    offset=(0, 0),
+                    font_size=60,
+                    offset=(0, -100),
                 )
             )
             seat_coord = seat_coord.rotate_clockwise_60()  # rotates around
