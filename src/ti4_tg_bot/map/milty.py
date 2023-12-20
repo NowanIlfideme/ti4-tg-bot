@@ -1,14 +1,23 @@
 """Milty draft approximation."""
 
 import warnings
+from collections import Counter
 from pathlib import Path
 from random import Random
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from PIL.Image import Image
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+    FieldValidationInfo,
+)
+from pydantic_core import ValidationError
 
-from ti4_tg_bot.data.models import Tile, TechSpecialty, TileSet
+from ti4_tg_bot.data.models import Tile, TechSpecialty, TileSet, Wormhole
 from ti4_tg_bot.map.hexes import HexCoord
 from ti4_tg_bot.map.ti4_map import TIMaybeMap, PlaceholderTile, TextMapAnnotation
 
@@ -158,7 +167,39 @@ class MiltyDraftState(BaseModel):
     # Other things needed
     mecatol: Tile
 
-    # TODO: Validators
+    # Validators
+
+    @field_validator(
+        "player_names", "player_order", "player_slices", "player_homes", mode="after"
+    )
+    @classmethod
+    def _chk_player_idx(
+        cls, v: dict[int, Any], info: FieldValidationInfo
+    ) -> dict[int, Any]:
+        """Ensure player index is within the range."""
+        n_players = info.data["n_players"]
+        for k in v.keys():
+            if k not in range(n_players):
+                raise ValueError(f"Value not within range [0, {n_players})")
+        return v
+
+    @field_validator("slices", mode="after")
+    @classmethod
+    def _chk_slices(cls, v: list[MiltyMapSlice]) -> list[MiltyMapSlice]:
+        """Check slice individually."""
+        for i, slice in enumerate(v):
+            # Ensure there aren't double wormholes in systems
+            wormholes: Counter[Wormhole] = Counter()
+            for tile in slice.tiles:
+                wormholes[tile.wormhole] += 1
+            for wht in list(Wormhole):
+                if wht == Wormhole.NO_WORMHOLE:
+                    continue
+                if wormholes[wht] > 1:
+                    raise ValueError(f"Too many {wht.name} wormholes in slice {i}")
+        return v
+
+    # Methods
 
     @classmethod
     def make_random(
@@ -169,8 +210,12 @@ class MiltyDraftState(BaseModel):
         n_slices: Literal[6] = 6,  # only 6 slices supported for now
         n_reds: Literal[2] = 2,  # 2 blue tiles
         n_blues: Literal[3] = 3,  # 3 blue tiles
+        retries: int = 5,
     ) -> tuple["MiltyDraftState", Random]:
         """Make a random draft state from a tileset, seed and settings."""
+        if retries < 0:  # if we have a negative amount of retries, we're out
+            raise RuntimeError("Ran out of retries when generating.")
+
         if isinstance(seed, Random):
             # clone
             rng = Random()
@@ -193,7 +238,26 @@ class MiltyDraftState(BaseModel):
             rng.shuffle(raw_i)
             slices.append(MiltyMapSlice.from_list(raw_i))
 
-        return cls(slices=slices, mecatol=tileset.mecatol), rng
+        # Create slice collection
+        # NOTE: Might fail entirely - we will just regenerate, if we have retries
+        try:
+            res = cls(slices=slices, mecatol=tileset.mecatol)
+        except ValidationError:
+            try:
+                res, rng = cls.make_random(
+                    tileset=tileset,
+                    seed=rng,
+                    retries=retries - 1,  # one less retry
+                    n_slices=n_slices,
+                    n_reds=n_reds,
+                    n_blues=n_blues,
+                )
+            except RuntimeError as rte:
+                raise RuntimeError(
+                    f"Could not make map within {retries} retries from seed {seed}"
+                ) from rte
+
+        return res, rng
 
     def to_map(self) -> TIMaybeMap:
         """Create a map from the draft state. Might fail/warn..."""
