@@ -238,6 +238,16 @@ class MiltyDraftState(BaseModel):
         ]
         return [(i, self.slices[i]) for i in indices]
 
+    @property
+    def is_complete(self) -> bool:
+        """Whether all choices have been made."""
+        return (
+            self.n_players
+            == len(self.player_factions)
+            == len(self.player_order)
+            == len(self.player_slices)
+        )
+
     # Validators
 
     @field_validator(
@@ -276,7 +286,7 @@ class MiltyDraftState(BaseModel):
         # TODO: Optionally (via flag) ensure that all wormhole tiles are placed
         return v
 
-    # Methods
+    # High level Methods
 
     @classmethod
     def make_random(
@@ -396,6 +406,8 @@ class MiltyDraftState(BaseModel):
 
         return TIMaybeMap(cells=cells, annotations=annots)
 
+    # Visualization
+
     def visualize_slices(
         self, base_path: Path, only_available: bool = False
     ) -> list[Image]:
@@ -422,7 +434,7 @@ class MiltyDraftState(BaseModel):
         return res
 
     def visualize_factions(
-        self, base_path: Path, only_available: bool = True
+        self, base_path: Path, only_available: bool = False
     ) -> list[Image]:
         res: list[Image] = []
         if only_available:
@@ -446,9 +458,48 @@ class MiltyDraftState(BaseModel):
             res.append(mmap.to_image(base_path))
         return res
 
+    # Player choices
+
+    def available_player_choices(
+        self, player_num: int
+    ) -> dict[str, int | Faction | MiltyMapSlice]:
+        """The choices available to a player, possibly: seats, factions, slices."""
+        res = {}
+        if player_num not in self.player_order:
+            for seat_i in self.available_seats:
+                res[f"seat_{seat_i}"] = seat_i
+        if player_num not in self.player_slices:
+            for sl_i, slice in self.available_slices:
+                res[f"slice_{sl_i}"] = slice
+        if player_num not in self.player_factions:
+            for fac_i, fac, _ in self.available_factions:
+                res[f"faction_{fac_i}"] = fac
+        return res
+
+    def apply_player_choice(self, player_num: int, choice_name: str) -> None:
+        """Apply player choice, given the name (see `available_player_choices`)."""
+        av_choices = self.available_player_choices(player_num=player_num)
+        choice = av_choices.get(choice_name, None)
+        if choice is None:
+            raise ValueError(f"Unknown choice: {choice_name!r}")
+
+        if isinstance(choice, int):
+            self.player_order[player_num] = choice
+        elif isinstance(choice, Faction):
+            fac_num = self.factions.index(choice)
+            self.player_factions[player_num] = fac_num
+        elif isinstance(choice, MiltyMapSlice):
+            slice_num = self.slices.index(choice)
+            self.player_slices[player_num] = slice_num
+
+    def snake_order(self) -> list[int]:
+        """Player numbers in 'snake' draft order."""
+        z = list(range(self.n_players))
+        return list(z) + list(reversed(z)) + list(z)
+
 
 QtyName = Literal[
-    "total", "resources", "strict_resources", "influence", "strict_influence"
+    "total", "eff_resources", "strict_resources", "eff_influence", "strict_influence"
 ]
 # HACK: Yeah this is ugly but maybe refactor later lol
 
@@ -460,9 +511,9 @@ def get_tile_quantity(
     match q_name:
         case "total":
             return evaluate_tile(t, skip_values=skip_values).total
-        case "resources":
+        case "eff_resources":
             return evaluate_tile(t, skip_values=skip_values).eff_resources
-        case "influence":
+        case "eff_influence":
             return evaluate_tile(t, skip_values=skip_values).eff_influence
         case "strict_resources":
             return evaluate_tile(t, skip_values=skip_values).strict_resources
@@ -479,9 +530,9 @@ def get_slice_quantity(
     match q_name:
         case "total":
             return s.evaluate_slice(skip_values=skip_values).total
-        case "resources":
+        case "eff_resources":
             return s.evaluate_slice(skip_values=skip_values).eff_resources
-        case "influence":
+        case "eff_influence":
             return s.evaluate_slice(skip_values=skip_values).eff_influence
         case "strict_resources":
             return s.evaluate_slice(skip_values=skip_values).strict_resources
@@ -535,8 +586,8 @@ class SliceRebalancer(BaseModel):
         """
         thresh_map_raw: dict[QtyName, float | None] = {
             "total": self.min_value,
-            "resources": self.min_eff_resources,
-            "influence": self.min_eff_influence,
+            "eff_resources": self.min_eff_resources,
+            "eff_influence": self.min_eff_influence,
             "strict_resources": self.min_strict_resources,
             "strict_influence": self.min_strict_influence,
         }
