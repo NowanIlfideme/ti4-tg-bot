@@ -81,7 +81,7 @@ def make_joiner_kb() -> InlineKeyboardBuilder:
     return builder
 
 
-class UserChoiceCallback(CallbackData, prefix="user_choice"):
+class UserChoiceCallback(CallbackData, prefix="UCC"):
     """Lobby join or leave callback."""
 
     chat_id: ChatID
@@ -219,7 +219,7 @@ FLOW_MSG = "\n".join(
         "Please choose a game setup flow:",
         "A) Gen 3 maps, choose map, choose place, ban faction, pick faction.",
         "B) Enter map string, choose map, choose place, ban faction, pick faction.",
-        "C) Draft from slices/factions/speaker order.",
+        "C) Draft from slices/factions/speaker order (similar to 'Milty' draft).",
     ]
 )
 
@@ -643,13 +643,26 @@ class GlobalBackend(object):
         # snake_order = draft_state.snake_order()
         foo = list(range(len(user_order)))
         snake_order = [*foo, *reversed(foo), *foo]
+
+        # Show player order
+        await msg.answer(
+            "\n".join(
+                ["Draft will run in this order:"]
+                + [user_att(user_order[so]) for so in snake_order]
+            )
+        )
+
+        # Run steps
         for curr_step, current_player_num in enumerate(snake_order):
             current_user = user_order[current_player_num]
 
             # Get player info
             player_info: list[str] = []
             for i, u in enumerate(user_order):
-                pi_str = f"{i+1}. {user_att(u)}:"
+                if i == current_player_num:
+                    pi_str = f"{i+1}. <b>{user_att(u)}</b>:"
+                else:
+                    pi_str = f"{i+1}. {u.full_name}:"
                 pi_fac = draft_state.player_factions.get(i)
                 if pi_fac is not None:
                     pi_str += f" as <i>{draft_state.factions[pi_fac].name}</i>"
@@ -661,14 +674,18 @@ class GlobalBackend(object):
                     pi_str += f" with <i>slice {pi_slice}</i>"
 
                 if i == current_player_num:
-                    pi_str = f"<b>{pi_str}</b>  (currently choosing)"
+                    pi_str += "  (currently choosing)"
                 player_info.append(pi_str)
 
             # Get availability
             avail_seats = ", ".join([f"{x}" for x in draft_state.available_seats])
             avail_factions = "\n".join(
-                [f"{fac_i[1].name}" for fac_i in draft_state.available_factions]
+                [
+                    f'<a href="{fac_i[1].wiki}">{fac_i[1].name}</a>'
+                    for fac_i in draft_state.available_factions
+                ]
             )
+
             avail_slices = ", ".join([f"{x[0]}" for x in draft_state.available_slices])
 
             # Get options
@@ -700,7 +717,8 @@ class GlobalBackend(object):
 
             # Send media group
             media_messages = await msg.answer_media_group(
-                media=media_group.build(), disable_notification=True
+                media=media_group.build(),
+                disable_notification=True,
             )
             if AVOID_REUPLOAD:
                 # Get photo IDs, to avoid re-uploading them
@@ -743,7 +761,7 @@ class GlobalBackend(object):
         )
         await msg.answer_media_group(result_mg.build())
         # One more, to avoid exiting the loop while still uploading
-        await msg.answer("Have fun! Use /start to create a new lobby, if necessary.")
+        await msg.answer("Have fun!")
 
 
 gback = GlobalBackend()
