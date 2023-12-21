@@ -6,20 +6,29 @@ import logging
 from pathlib import Path
 from random import Random
 from datetime import datetime
-
+from io import BytesIO
 import re
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BotCommand, CallbackQuery, Message, User, Chat, FSInputFile
+from aiogram.types import (
+    BotCommand,
+    BufferedInputFile,
+    CallbackQuery,
+    Message,
+    User,
+    Chat,
+    FSInputFile,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.media_group import MediaGroupBuilder
 
 from ti4_tg_bot.data.models import Faction
 from ti4_tg_bot.map.annots import TextMapAnnotation
 from ti4_tg_bot.map.gen_helper import MapGenHelper
+from ti4_tg_bot.map.milty import SliceRebalancer
 from ti4_tg_bot.map.ti4_map import TIMaybeMap, PlaceholderTile
 
 logger = logging.getLogger(__name__)
@@ -208,6 +217,7 @@ FLOW_MSG = "\n".join(
         "Please choose a game setup flow:",
         "A) Gen 3 maps, choose map, choose place, ban faction, pick faction.",
         "B) Enter map string, choose map, choose place, ban faction, pick faction.",
+        "C) ",
     ]
 )
 
@@ -306,11 +316,15 @@ class GlobalBackend(object):
 
             # TEST choice
 
-            choice = await game.request_choice(user, FLOW_MSG, ["A", "B"])
+            choice = await game.request_choice(user, FLOW_MSG, ["A", "B", "C"])
             if choice == "A":
                 await self.game_flow_a(chat_id=chat_id, leader=user)
             elif choice == "B":
                 await self.game_flow_b(chat_id=chat_id, leader=user)
+            elif choice == "C":
+                await self.game_flow_c(chat_id=chat_id, leader=user)
+            else:
+                await msg.answer("Unknown choice - ignoring.")
 
             await msg.answer("Game setup is done, you may /start a new lobby.")
             del self.games[chat_id]
@@ -545,6 +559,92 @@ class GlobalBackend(object):
         img = FSInputFile(file_name)
         # Upload and add caption
         await msg.answer_photo(photo=img, caption="\n".join(lines))
+
+    async def game_flow_c(self, chat_id: ChatID, leader: User):
+        """Game flow C."""
+        game = self.games[chat_id]
+        msg = game.last_msg
+
+        # Prepare map generator
+        gen = game.mgh
+        tileset = gen.game_info.tiles
+
+        # Select how many factions to add
+        opts_n_factions = range(6, len(gen.game_info.factions) // 2 + 1)
+        choice_raw_n_factions = await game.request_choice(
+            leader, "How many factions to add?", [str(x) for x in opts_n_factions]
+        )
+        choice_n_factions = int(choice_raw_n_factions)
+
+        # Create random order
+        # Set seed and RNG
+        seed = int(datetime.utcnow().timestamp() * 1000)
+        rng = Random(seed)
+        map_seed = rng.randint(1, 123456789)
+        logger.info(f"Main seed: {seed}")
+        logger.info(f"Map seed: {map_seed}")
+        # await msg.answer_dice()
+
+        # Create order
+        n_players = len(game.users)
+        user_order = rng.sample(list(game.users.values()), k=n_players)
+
+        # Create draft state
+        sr = SliceRebalancer(
+            min_value=9,
+            min_strict_resources=4,
+            min_eff_resources=1,
+            min_strict_influence=4,
+            min_eff_influence=1,
+        )
+        logger.info("Generating draft state...")
+        draft_state = gen.gen_milty_base(
+            n_factions=choice_n_factions,
+            slice_rebalancer=sr,
+            seed=map_seed,
+        )
+
+        # Talk to players
+        lines = (
+            ["Player order:"]
+            + [f"{i+1}. {user_att(u)}" for i, u in enumerate(user_order)]
+            + ["Factions:"]
+            + [fac_i.name for fac_i in draft_state.factions]
+        )
+
+        # Build media group
+        media_group = MediaGroupBuilder(caption="\n".join(lines))
+
+        # Prepare initial map
+        current_map, map_img = gen.milty_to_image(draft_state, map_title="Current Map")
+        w, h = map_img.size
+        DOWNSCALE_FACTOR = 2
+        tmpio = BytesIO()
+        map_img.convert("RGB").resize(
+            (w // DOWNSCALE_FACTOR, h // DOWNSCALE_FACTOR)
+        ).save(tmpio, format="PNG")
+        media_group.add_photo(
+            BufferedInputFile(tmpio.getvalue(), filename=f"{chat_id}/initial_map.png")
+        )
+
+        # Prepare images of slices
+        slice_imgs = draft_state.visualize_slices(gen.path_imgs)
+        slice_img_files: list[BufferedInputFile] = []
+        for i, si in enumerate(slice_imgs):
+            tmpio = BytesIO()
+            si.save(tmpio, format="PNG")
+            fi = BufferedInputFile(
+                tmpio.getvalue(), filename=f"{chat_id}/slice_{i}.png"
+            )
+            slice_img_files.append(fi)  # not needed?
+
+            media_group.add_photo(fi)
+        # Ok, send the message
+        final_msgs = await msg.answer_media_group(media=media_group.build())
+        raw_photo_ids: list[str] = []
+        for msg_i in final_msgs:
+            if msg_i.photo is not None:
+                raw_photo_ids.append(msg_i.photo[2].file_id)  # lol
 
 
 gback = GlobalBackend()
