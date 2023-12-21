@@ -226,7 +226,9 @@ class MiltyDraftState(BaseModel):
     def available_factions(self) -> list[tuple[int, Faction, Tile]]:
         """Available factions (number, faction info, tile)."""
         indices = [
-            x for x in range(self.n_players) if x not in self.player_factions.values()
+            x
+            for x in range(len(self.factions))
+            if x not in self.player_factions.values()
         ]
         return [(i, self.factions[i], self.faction_homes[i]) for i in indices]
 
@@ -368,38 +370,38 @@ class MiltyDraftState(BaseModel):
                 place_coord = place_coord.rotate_clockwise_60()
             cells[place_coord] = PlaceholderTile()
 
-        # Place the slices
-        for i in range(N):
-            try:
-                name_i = self.player_names.get(i, f"player_{i}")
-                order_i = self.player_order[i]
-                slice_i = self.slices[self.player_slices[i]].model_copy(deep=True)
+        # Add information about each player
+        for ip in range(N):
+            name_i = self.player_names.get(ip, f"player_{ip}")
+            # Only if the player has chosen a seating order...
+            if ip in self.player_order:
+                order_i = self.player_order[ip]
 
-                # Set home slice (is this needed?)
-                if i in self.player_homes:
-                    slice_i.home = self.player_homes[i]
-
-                cells.update(slice_i.to_tile_dict(rotations=order_i))
-
-                # Add player labels
+                # Add player label
                 place_coord = HexCoord(root=(0, -3, 3))
                 for _ in range(order_i):
                     place_coord = place_coord.rotate_clockwise_60()
+                annots.append(TextMapAnnotation(cell=place_coord, text=name_i))
 
-                av = slice_i.evaluate_slice()
-                res_vals_i = av.human_description
-                annots += [
-                    TextMapAnnotation(cell=place_coord, text=name_i),
-                    TextMapAnnotation(
-                        cell=place_coord,
-                        text=res_vals_i,
-                        offset=(0, 80),
-                        font_size=40,
-                    ),
-                ]
-            except Exception as exc:
-                logger.warn(f"Failed to set player {i}: {exc!r}")
-                # raise  # should we do that?...
+                # Add home for faction (if set)
+                if ip in self.player_homes:
+                    cells[place_coord] = self.player_homes[ip]
+
+                # Add slice (if set)
+                if ip in self.player_slices:
+                    slice_i = self.slices[self.player_slices[ip]].model_copy(deep=True)
+                    av = slice_i.evaluate_slice()
+                    res_vals_i = av.human_description
+                    #
+                    cells.update(slice_i.to_tile_dict(rotations=order_i))
+                    annots.append(
+                        TextMapAnnotation(
+                            cell=place_coord,
+                            text=res_vals_i,
+                            offset=(0, 80),
+                            font_size=40,
+                        )
+                    )
 
         # Add mecatol
         cells[HexCoord(root=(0, 0, 0))] = self.mecatol.model_copy(deep=True)
@@ -467,13 +469,19 @@ class MiltyDraftState(BaseModel):
         res = {}
         if player_num not in self.player_order:
             for seat_i in self.available_seats:
-                res[f"seat_{seat_i}"] = seat_i
+                if seat_i == 0:
+                    res["Speaker (Seat 0)"] = seat_i
+                else:
+                    res[f"Seat {seat_i}"] = seat_i
         if player_num not in self.player_slices:
             for sl_i, slice in self.available_slices:
-                res[f"slice_{sl_i}"] = slice
+                # res[f"slice_{sl_i}"] = slice
+                eff_val = slice.evaluate_slice().total
+                res[f"slice_{sl_i} (~{eff_val:.2f})"] = slice
         if player_num not in self.player_factions:
             for fac_i, fac, _ in self.available_factions:
-                res[f"faction_{fac_i}"] = fac
+                # res[f"faction_{fac_i}"] = fac
+                res[fac.name] = fac
         return res
 
     def apply_player_choice(self, player_num: int, choice_name: str) -> None:

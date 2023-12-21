@@ -49,6 +49,8 @@ ChatID = int
 UserID = int
 
 MAP_STRING_REGEX = r"^\d{1,2}(?:\s\d{1,2}){35}$"
+DOWNSCALE_FACTOR = 2
+AVOID_REUPLOAD = False  # for now... TODO
 
 
 def user_att(user: User) -> str:
@@ -217,7 +219,7 @@ FLOW_MSG = "\n".join(
         "Please choose a game setup flow:",
         "A) Gen 3 maps, choose map, choose place, ban faction, pick faction.",
         "B) Enter map string, choose map, choose place, ban faction, pick faction.",
-        "C) ",
+        "C) Draft from slices/factions/speaker order.",
     ]
 )
 
@@ -570,7 +572,7 @@ class GlobalBackend(object):
         tileset = gen.game_info.tiles
 
         # Select how many factions to add
-        opts_n_factions = range(6, len(gen.game_info.factions) // 2 + 1)
+        opts_n_factions = range(6, 12 + 1)
         choice_raw_n_factions = await game.request_choice(
             leader, "How many factions to add?", [str(x) for x in opts_n_factions]
         )
@@ -583,7 +585,7 @@ class GlobalBackend(object):
         map_seed = rng.randint(1, 123456789)
         logger.info(f"Main seed: {seed}")
         logger.info(f"Map seed: {map_seed}")
-        # await msg.answer_dice()
+        last_msg = await msg.answer(f"Map seed: {map_seed}\nGenerating draft...")
 
         # Create order
         n_players = len(game.users)
@@ -603,33 +605,32 @@ class GlobalBackend(object):
             slice_rebalancer=sr,
             seed=map_seed,
         )
+        # Set player names
+        for i, u in enumerate(user_order):
+            draft_state.player_names[i] = user_att(u)
 
-        # Talk to players
-        lines = (
-            ["Player order:"]
-            + [f"{i+1}. {user_att(u)}" for i, u in enumerate(user_order)]
-            + ["Factions:"]
-            + [fac_i.name for fac_i in draft_state.factions]
-        )
+        # Create helper for the map image
 
-        # Build media group
-        media_group = MediaGroupBuilder(caption="\n".join(lines))
-
-        # Prepare initial map
-        current_map, map_img = gen.milty_to_image(draft_state, map_title="Current Map")
-        w, h = map_img.size
-        DOWNSCALE_FACTOR = 2
-        tmpio = BytesIO()
-        map_img.convert("RGB").resize(
-            (w // DOWNSCALE_FACTOR, h // DOWNSCALE_FACTOR)
-        ).save(tmpio, format="PNG")
-        media_group.add_photo(
-            BufferedInputFile(tmpio.getvalue(), filename=f"{chat_id}/initial_map.png")
-        )
+        def prep_map_img(map_title: str, filename: str) -> BufferedInputFile:
+            """Prepare map image."""
+            # Prepare and add current map to media group
+            current_map, current_map_img = gen.milty_to_image(
+                draft_state, map_title=map_title
+            )
+            w, h = current_map_img.size
+            tmpio = BytesIO()
+            current_map_img.convert("RGB").resize(
+                (w // DOWNSCALE_FACTOR, h // DOWNSCALE_FACTOR)
+            ).save(tmpio, format="PNG")
+            return BufferedInputFile(
+                tmpio.getvalue(),
+                filename=filename,
+            )
 
         # Prepare images of slices
+        logger.info("Preparing slice images...")
         slice_imgs = draft_state.visualize_slices(gen.path_imgs)
-        slice_img_files: list[BufferedInputFile] = []
+        slice_img_files: list[BufferedInputFile | str] = []
         for i, si in enumerate(slice_imgs):
             tmpio = BytesIO()
             si.save(tmpio, format="PNG")
@@ -638,13 +639,114 @@ class GlobalBackend(object):
             )
             slice_img_files.append(fi)  # not needed?
 
-            media_group.add_photo(fi)
-        # Ok, send the message
-        final_msgs = await msg.answer_media_group(media=media_group.build())
-        raw_photo_ids: list[str] = []
-        for msg_i in final_msgs:
-            if msg_i.photo is not None:
-                raw_photo_ids.append(msg_i.photo[2].file_id)  # lol
+        # Figure out order and play in it
+        # snake_order = draft_state.snake_order()
+        foo = list(range(len(user_order)))
+        snake_order = [*foo, *reversed(foo), *foo]
+        for curr_step, current_player_num in enumerate(snake_order):
+            current_user = user_order[current_player_num]
+
+            # Get player info
+            player_info: list[str] = []
+            for i, u in enumerate(user_order):
+                pi_str = f"{i+1}. {user_att(u)}:"
+                pi_fac = draft_state.player_factions.get(i)
+                if pi_fac is not None:
+                    pi_str += f" as <i>{draft_state.factions[pi_fac].name}</i>"
+                pi_loc = draft_state.player_order.get(i)
+                if pi_loc is not None:
+                    pi_str += f" at <i>seat {pi_loc}</i>"
+                pi_slice = draft_state.player_slices.get(i)
+                if pi_slice is not None:
+                    pi_str += f" with <i>slice {pi_slice}</i>"
+
+                if i == current_player_num:
+                    pi_str = f"<b>{pi_str}</b>"
+                player_info.append(pi_str)
+
+            # Get availability
+            avail_seats = ", ".join([f"{x}" for x in draft_state.available_seats])
+            avail_factions = "\n".join(
+                [
+                    f"{fac_i[0]} - {fac_i[1].name}"
+                    for fac_i in draft_state.available_factions
+                ]
+            )
+            avail_slices = ", ".join([f"{x[0]}" for x in draft_state.available_slices])
+
+            # Get options
+            options = draft_state.available_player_choices(current_player_num)
+
+            # Prepare media group (to show available choices)
+            lines = (
+                ["Available Slices: " + avail_slices]
+                + ["Available Seats: " + avail_seats]
+                + ["Available Factions:"]
+                + [avail_factions]
+                + ["--------------------"]
+                + ["Current state (in order):"]
+                + player_info
+            )
+            media_group = MediaGroupBuilder(caption="\n".join(lines))
+
+            # Prepare and add current map to media group
+            media_group.add_photo(
+                prep_map_img(
+                    map_title="Current Map",
+                    filename=f"{chat_id}/map_step_{curr_step}.png",
+                )
+            )
+
+            # Add slices to media group
+            for i, _ in draft_state.available_slices:
+                media_group.add_photo(slice_img_files[i])
+
+            # Send media group
+            media_messages = await msg.answer_media_group(
+                media=media_group.build(), disable_notification=True
+            )
+            if AVOID_REUPLOAD:
+                # Get photo IDs, to avoid re-uploading them
+                raw_photo_ids: list[str] = []
+                for msg_i in media_messages:
+                    if msg_i.photo is not None:
+                        raw_photo_ids.append(msg_i.photo[2].file_id)  # magic number 2
+                slice_img_files = [str(x) for x in raw_photo_ids[1:]]
+
+            # Get choice
+            prompt_i = []
+            if current_player_num not in draft_state.player_slices:
+                prompt_i.append("a slice")
+            if current_player_num not in draft_state.player_factions:
+                prompt_i.append("a faction")
+            if current_player_num not in draft_state.player_order:
+                prompt_i.append("a seat")
+            choice_i = await game.request_choice(
+                current_user,
+                "Select " + " or ".join(prompt_i) + ":",
+                choices=list(options),
+                max_width=2,
+            )
+            # Apply choice
+            draft_state.apply_player_choice(current_player_num, choice_i)
+
+        # OK, we should be done
+        draft_state.is_complete  # not correct for testing... lol
+        try:
+            speaker = [k for k, v in draft_state.player_order.items() if v == 0][0]
+            u_speaker = user_order[speaker]
+            s_speaker = user_att(u_speaker)
+        except Exception:
+            s_speaker = "<unknown>"
+        result_mg = MediaGroupBuilder(
+            caption=f"Game setup finalized, with {s_speaker} as the speaker."
+        )
+        result_mg.add_photo(
+            prep_map_img(map_title="Final Map", filename=f"{chat_id}/map_final.png")
+        )
+        await msg.answer_media_group(result_mg.build())
+        # One more, to avoid exiting the loop while still uploading
+        await msg.answer("Have fun! Use /start to create a new lobby, if necessary.")
 
 
 gback = GlobalBackend()
