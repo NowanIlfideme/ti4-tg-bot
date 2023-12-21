@@ -354,11 +354,11 @@ class MiltyDraftState(BaseModel):
         """Create a map from the draft state. Might fail/warn..."""
         N = self.n_players
         if len(self.player_order) != N:
-            logger.warn("Player order is not fully set.")
+            logger.info("Player order is not fully set.")
         if len(self.player_slices) != N:
-            logger.warn("Player slices are not fully set.")
+            logger.info("Player slices are not fully set.")
         if len(self.player_homes) != N:
-            logger.warn("Player homes are not fully set.")
+            logger.info("Player homes are not fully set.")
 
         cells = {}
         annots: list[TextMapAnnotation] = []
@@ -383,10 +383,6 @@ class MiltyDraftState(BaseModel):
                     place_coord = place_coord.rotate_clockwise_60()
                 annots.append(TextMapAnnotation(cell=place_coord, text=name_i))
 
-                # Add home for faction (if set)
-                if ip in self.player_homes:
-                    cells[place_coord] = self.player_homes[ip]
-
                 # Add slice (if set)
                 if ip in self.player_slices:
                     slice_i = self.slices[self.player_slices[ip]].model_copy(deep=True)
@@ -402,6 +398,10 @@ class MiltyDraftState(BaseModel):
                             font_size=40,
                         )
                     )
+
+                # Add home for faction (if set) - will override the slice :)
+                if ip in self.player_homes:
+                    cells[place_coord] = self.player_homes[ip]
 
         # Add mecatol
         cells[HexCoord(root=(0, 0, 0))] = self.mecatol.model_copy(deep=True)
@@ -476,8 +476,11 @@ class MiltyDraftState(BaseModel):
         if player_num not in self.player_slices:
             for sl_i, slice in self.available_slices:
                 # res[f"slice_{sl_i}"] = slice
-                eff_val = slice.evaluate_slice().total
-                res[f"slice_{sl_i} (~{eff_val:.2f})"] = slice
+                ev = slice.evaluate_slice()
+                eff_val = ev.total
+                st_res = ev.strict_resources
+                st_inf = ev.strict_influence
+                res[f"Slice {sl_i} (~{eff_val:.2f}/{st_res}/{st_inf})"] = slice
         if player_num not in self.player_factions:
             for fac_i, fac, _ in self.available_factions:
                 # res[f"faction_{fac_i}"] = fac

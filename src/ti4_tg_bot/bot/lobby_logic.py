@@ -572,7 +572,7 @@ class GlobalBackend(object):
         tileset = gen.game_info.tiles
 
         # Select how many factions to add
-        opts_n_factions = range(6, 12 + 1)
+        opts_n_factions = range(6, len(gen.game_info.factions) + 1)
         choice_raw_n_factions = await game.request_choice(
             leader, "How many factions to add?", [str(x) for x in opts_n_factions]
         )
@@ -661,16 +661,13 @@ class GlobalBackend(object):
                     pi_str += f" with <i>slice {pi_slice}</i>"
 
                 if i == current_player_num:
-                    pi_str = f"<b>{pi_str}</b>"
+                    pi_str = f"<b>{pi_str}</b>  (currently choosing)"
                 player_info.append(pi_str)
 
             # Get availability
             avail_seats = ", ".join([f"{x}" for x in draft_state.available_seats])
             avail_factions = "\n".join(
-                [
-                    f"{fac_i[0]} - {fac_i[1].name}"
-                    for fac_i in draft_state.available_factions
-                ]
+                [f"{fac_i[1].name}" for fac_i in draft_state.available_factions]
             )
             avail_slices = ", ".join([f"{x[0]}" for x in draft_state.available_slices])
 
@@ -684,7 +681,7 @@ class GlobalBackend(object):
                 + ["Available Factions:"]
                 + [avail_factions]
                 + ["--------------------"]
-                + ["Current state (in order):"]
+                + ["Player choices:"]
                 + player_info
             )
             media_group = MediaGroupBuilder(caption="\n".join(lines))
