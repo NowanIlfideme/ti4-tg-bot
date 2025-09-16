@@ -6,10 +6,11 @@
     "configurations": [
         {
             "name": "Run Bot",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "ti4_tg_bot.main",
-            "justMyCode": true
+            "cwd": "${workspaceFolder}",
+            "python": "${command:python.interpreterPath}",
         }
     ]
 }

@@ -711,7 +711,16 @@ class GlobalBackend(object):
                 )
             )
 
-            # Add slices to media group
+            # Add taken slices to media group
+            for i_player, i_slice in draft_state.player_slices.items():
+                if i_player in draft_state.player_order:
+                    # Ignore - we will add
+                    pass
+                else:
+                    # TODO: Create new image, with player info
+                    media_group.add_photo(slice_img_files[i_slice])
+
+            # Add available slices to media group
             for i, _ in draft_state.available_slices:
                 media_group.add_photo(slice_img_files[i])
 
@@ -746,7 +755,8 @@ class GlobalBackend(object):
             draft_state.apply_player_choice(current_player_num, choice_i)
 
         # OK, we should be done
-        draft_state.is_complete  # not correct for testing... lol
+        if not draft_state.is_complete:
+            logger.warning("All players moved, but draft map is not complete!")
         try:
             speaker = [k for k, v in draft_state.player_order.items() if v == 0][0]
             u_speaker = user_order[speaker]

@@ -71,9 +71,10 @@ class MapGenHelper(BaseModel):
         cells = {}
         annots: list[TextMapAnnotation] = []
         home_num = 0
-        home_tiles = ["A", "B", "C", "D", "E", "F"]
-        for coord, num in coord_to_num.items():
+        home_tiles = list("ABCDEFGHIJKLMNOPQRS")
+        for ii, (coord, num) in enumerate(coord_to_num.items()):
             if num == 0:
+                print("Running on", ii, "as", tile_nums[ii : ii + 2])
                 home_name = home_tiles[home_num]
                 tile_i = PlaceholderTile(home_name=home_name)
                 home_num += 1
